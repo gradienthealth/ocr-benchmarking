@@ -1,0 +1,69 @@
+# ---- PHI: NEVER commit any of these ----
+# Raw images / pixel data
+*.dcm
+*.dicom
+*.tar
+*.png
+*.jpg
+*.jpeg
+*.tif
+*.tiff
+*.bmp
+*.gif
+*.webp
+*.npy
+*.npz
+
+# Ground truth + annotation exports (contain PHI token text)
+ground_truth/gt.csv
+ground_truth/*.csv
+**/raw_response*
+label-studio*/
+label_studio*/
+
+# Bulk data dirs / renders / caches
+data/
+renders/
+crops/
+cache/
+results/
+
+# Synthetic test fixtures: ignore generated images, keep the regenerator (D-0.3)
+tests/fixtures/
+
+# Logs (may capture filenames, tags, tokens)
+*.log
+
+# Local env / build artifacts
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Commit the *hash* of gt.csv, never its contents.
+!ground_truth/gt.csv.sha256
+
+# NOTE: commit the *hash* of gt.csv, never its contents.
+# manifest.csv contains quasi-identifiers (dates, pseudonyms) — keep it out of
+# git unless your team has explicitly classified it as shareable.
+manifest.csv
+
+# source_paths.txt = 1000 gs:// paths to specific PHI-bucket series (linkable
+# identifiers, Limited-Data-Set grade). Same class as manifest.csv — never commit.
+source_paths.txt
+
+# ---- NOT FOR THE PUBLIC REPO (gradienthealth/ocr-benchmarking) ----
+# Personal working docs: internal planning, decision log, and learning journal.
+plan.md
+insights.md
+diff-update.md
+
+# Internal detail Gradient wouldn't want public: these name the live PHI GCS
+# bucket, the vendor/BAA legal matrix, the enforcement-layer inventory, and
+# internal ops paths.
+CLAUDE.md
+transfer.sh
+build_manifest.py
+scripts/

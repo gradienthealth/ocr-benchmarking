@@ -1,0 +1,90 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "intern-ocr-harness"
+version = "0.0.0"
+description = "Engine-agnostic benchmark harness for OCR on clinical medical images (PHI-handling — see CLAUDE.md §0)."
+requires-python = ">=3.12"          # D-0.2: most modern floor with full wheel support; re-verify vs PaddleOCR+torch in Phase 9
+
+# Core deps ONLY — pinned for determinism. NO engine deps (doctr/paddle/easyocr/
+# transformers/anthropic/boto3/google-cloud-vision); those are added per-phase.
+dependencies = [
+    "numpy==2.2.1",
+    "pandas==2.2.3",
+    "rapidfuzz==3.11.0",
+    "jiwer==3.1.0",
+    "Pillow==11.1.0",
+    "pydicom==3.0.1",
+    "matplotlib==3.10.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==8.3.4",
+    "ruff==0.9.1",
+]
+# Engine deps, one extra per runner (Phase 9) — never in the core list above, so a core
+# install stays minimal and an engine bump can't perturb the harness's own pins.
+#
+# CPU-only builds (D-9.1). docTR 1.0.x has torch/torchvision as HARD base deps, and on Linux
+# plain-PyPI `torch` is the CUDA build (~2 GB of nvidia-* wheels). An extra cannot carry an
+# index URL, so install CPU torch FIRST, then this extra:
+#
+#   pip install torch==2.13.0+cpu torchvision==0.28.0+cpu \
+#       --index-url https://download.pytorch.org/whl/cpu
+#   pip install -e ".[doctr]"
+#
+# Resolved in-env 2026-07-31: torch 2.13.0+cpu, torchvision 0.28.0+cpu, doctr v1.0.1.
+# Latency from a CPU build is NOT representative of GPU-served production numbers.
+# Pretrained weights download once from doctr-static.mindee.com into ~/.cache/doctr/models
+# (override with DOCTR_CACHE_DIR); no image ever leaves the environment.
+doctr = ["python-doctr==1.0.1"]
+#
+# PP-OCRv6_medium (Phase 9). `paddleocr` pulls `paddlex[ocr-core]` but NOT the framework, so
+# `paddlepaddle` is pinned explicitly. Plain `paddlepaddle` on PyPI IS the CPU build (the GPU
+# build is the separate `paddlepaddle-gpu` package), so this extra needs no index URL — unlike
+# [doctr] above — and `pip install -e ".[paddle]"` is enough (D-9.1, CPU-only).
+#
+# Resolved in-env 2026-07-31: paddleocr 3.7.0, paddlex 3.7.2, paddlepaddle 3.3.1;
+# paddle.device.is_compiled_with_cuda() == False.
+# Weights (PP-OCRv6_medium_det/_rec) download once into ~/.paddlex/official_models. paddlex
+# 3.7 defaults PADDLE_PDX_MODEL_SOURCE to "huggingface", so the fetch stays inside the
+# sandbox's network allowlist; no image ever leaves the environment.
+# NOTE: the runner sets enable_mkldnn=False — the oneDNN CPU path raises NotImplementedError
+# on this stack and no inference runs at all. See run_paddle_v6.py's docstring before bumping.
+paddle = ["paddleocr==3.7.0", "paddlepaddle==3.3.1"]
+#
+# EasyOCR (Phase 9, floor/baseline arm). Depends on torch/torchvision, already satisfied by
+# the CPU wheels installed for [doctr] above — install those FIRST if starting from scratch,
+# or plain-PyPI `torch` will pull the CUDA build (D-9.1, CPU-only):
+#
+#   pip install torch==2.13.0+cpu torchvision==0.28.0+cpu \
+#       --index-url https://download.pytorch.org/whl/cpu
+#   pip install -e ".[easyocr]"
+#
+# Resolved in-env 2026-07-31: easyocr 1.7.2, python-bidi 0.6.11, opencv-python-headless
+# 5.0.0.93, scikit-image 0.26.0. No pin needed for python-bidi: easyocr 1.7.2 imports
+# `bidi.algorithm.get_display`, which the 0.6.x rewrite dropped and then restored — 0.6.11
+# imports cleanly. Re-verify that import before bumping either package.
+# Weights (CRAFT detector + english_g2 recognizer) download once into ~/.EasyOCR/model from
+# the project's public release assets; no image ever leaves the environment.
+easyocr = ["easyocr==1.7.2"]
+
+[tool.setuptools.packages.find]
+include = ["harness*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+# .claude/ holds Claude Code config + the safety-critical PHI guard hooks — not harness
+# source, and never to be reformatted by lint (CLAUDE.md §6.4). Lint project code only.
+extend-exclude = [".claude"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

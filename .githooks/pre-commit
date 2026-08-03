@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# PHI guard: refuse to commit raw PHI artifacts. Runs on every `git commit`,
+# independently of Claude. Versioned in .githooks/ and wired via
+# `git config core.hooksPath .githooks` (see setup_hooks.sh).
+set -euo pipefail
+
+# Staged files (added/copied/modified), NUL-separated for safe filenames.
+mapfile -d '' staged < <(git diff --cached --name-only -z --diff-filter=ACM)
+
+phi_regex='\.(dcm|dicom|tar|png|jpg|jpeg|tif|tiff|bmp|gif|webp|npy|npz)$'
+name_regex='(^|/)(gt\.csv|.*raw_response.*|manifest\.csv)$'
+
+blocked=()
+for f in "${staged[@]:-}"; do
+  [ -z "$f" ] && continue
+  if [[ "$f" =~ $phi_regex ]] || [[ "$f" =~ $name_regex ]]; then
+    blocked+=("$f")
+  fi
+done
+
+if [ "${#blocked[@]}" -gt 0 ]; then
+  echo "✗ COMMIT BLOCKED — these look like PHI and must never be committed:" >&2
+  printf '    %s\n' "${blocked[@]}" >&2
+  echo "" >&2
+  echo "  PHI (DICOM/images/gt.csv/raw_response/manifest) stays out of git." >&2
+  echo "  If a file is a false positive, fix .gitignore or rename it; do NOT" >&2
+  echo "  bypass with --no-verify on this repo." >&2
+  exit 1
+fi
+exit 0

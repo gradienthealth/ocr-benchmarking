@@ -1,0 +1,75 @@
+{
+  "$comment": "Project-level config (committed). The PHI-block hook lives HERE, not in settings.local.json, because: (1) the local file is auto-rewritten by the permission system and loses the hooks block, and (2) PreToolUse hooks still run under `claude --dangerously-skip-permissions` (the `clauded` alias), whereas the permission allow/deny rules do NOT. This hook is the PHI backstop that survives `clauded`. See CLAUDE.md sections 0 and 9.",
+  "sandbox": {
+    "enabled": true,
+    "failIfUnavailable": false,
+    "allowUnsandboxedCommands": true,
+    "network": {
+      "allowedDomains": [
+        "pypi.org",
+        "files.pythonhosted.org",
+        "huggingface.co",
+        "*.huggingface.co",
+        "github.com",
+        "*.githubusercontent.com",
+        "codeload.github.com"
+      ]
+    },
+    "filesystem": {
+      "allowWrite": [
+        "/home/user/intern_ocr_transfer",
+        "/tmp"
+      ],
+      "denyRead": [
+        "~/.aws",
+        "~/.ssh",
+        "~/.config/gcloud",
+        "~/.claude/.credentials.json"
+      ]
+    }
+  },
+  "permissions": {
+    "deny": [
+      "Read(./**/*.dcm)",
+      "Read(./**/*.dicom)",
+      "Read(./**/*.png)",
+      "Read(./**/*.jpg)",
+      "Read(./**/*.jpeg)",
+      "Read(./**/*.tif)",
+      "Read(./**/*.tiff)",
+      "Read(./**/*.bmp)",
+      "Read(./**/*.npy)",
+      "Read(./**/*.npz)",
+      "Read(./ground_truth/gt.csv)",
+      "Read(./**/*raw_response*)",
+      "Read(**/.env*)",
+      "Read(~/.aws/**)",
+      "Read(~/.ssh/**)",
+      "Read(~/.config/gcloud/**)",
+      "Bash(gcloud storage cat *)",
+      "Bash(gsutil cat *)",
+      "Bash(curl *)",
+      "Bash(wget *)",
+      "Bash(nc *)",
+      "Bash(ncat *)",
+      "Bash(netcat *)",
+      "Bash(socat *)",
+      "Bash(scp *)",
+      "Bash(rsync *)",
+      "Bash(git push *)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Read|NotebookRead|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/block_phi_read.py\""
+          }
+        ]
+      }
+    ]
+  }
+}
