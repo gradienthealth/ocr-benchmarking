@@ -35,6 +35,13 @@ def _mkrow(**over) -> dict:
         negative_control_floor_count=0,
         stratum="synth_ct_axial",
         model_name="fake-engine",
+        # Non-empty by default: aggregate() now rejects a blank version (D-8.4).
+        version="0.0.0-fake",
+        # None by default: no verifier ran. verifier_elapsed=None is what aggregate() checks
+        # to decide whether a row's verifier identity is even relevant (D-9.1) — a row with
+        # a real verifier_elapsed but blank identity is what gets rejected, not this default.
+        verifier_model_name=None,
+        verifier_version=None,
     )
     row.update(over)
     return row
@@ -113,7 +120,15 @@ def test_latency_single_value_degenerates():
 
 
 def test_verifier_latency_split_and_none_filtering():
-    rows = [_mkrow(elapsed=0.1, verifier_elapsed=0.5), _mkrow(elapsed=0.2, verifier_elapsed=None)]
+    # Both rows share one verifier identity (a real gated run's rows always do, D-9.1) even
+    # though only one of them actually has a recorded verifier_elapsed — that row alone is
+    # what the blank-verifier-identity check inspects.
+    rows = [
+        _mkrow(elapsed=0.1, verifier_elapsed=0.5,
+               verifier_model_name="fake-verifier", verifier_version="0.0.0-fake"),
+        _mkrow(elapsed=0.2, verifier_elapsed=None,
+               verifier_model_name="fake-verifier", verifier_version="0.0.0-fake"),
+    ]
     ov = aggregate(rows)["overall"]
     assert ov["latency"]["mean"] == pytest.approx(0.15)  # both primary calls
     assert ov["verifier_latency"]["mean"] == pytest.approx(0.5)  # None row filtered out
@@ -154,6 +169,121 @@ def test_cost_sum_and_mean():
 
 def test_model_name_carried_through():
     assert aggregate([_mkrow(model_name="engineX")])["model_name"] == "engineX"
+
+
+# --- version provenance: rule #9 enforced where the merge happens -------------
+# D-8.3 (never blend two (model_name, version) pairs) had no test before D-8.4 was added;
+# both guards are pinned here, including the hole the second one exists to close.
+
+
+def test_version_carried_through():
+    assert aggregate([_mkrow(version="2.3.4")])["version"] == "2.3.4"
+
+
+def test_refuses_to_blend_two_engine_versions():
+    """Same engine, two builds, one aggregate() call — the rule #9 failure."""
+    with pytest.raises(ValueError, match="refusing to blend"):
+        aggregate([_mkrow(version="1.0.0"), _mkrow(version="1.1.0")])
+
+
+def test_refuses_to_blend_two_model_names():
+    with pytest.raises(ValueError, match="refusing to blend"):
+        aggregate([_mkrow(model_name="engineA"), _mkrow(model_name="engineB")])
+
+
+def test_blank_version_rejected_even_though_every_row_agrees():
+    """The hole a mixed-pair check alone cannot see (D-8.4).
+
+    Rows that all carry version "" form ONE (model_name, version) pair, so the D-8.3
+    check is perfectly satisfied — while the batch in fact carries no provenance at all
+    and may be two engine builds concatenated. Hence a separate, earlier check.
+    """
+    rows = [_mkrow(version=""), _mkrow(version="")]
+    assert len({(r["model_name"], r["version"]) for r in rows}) == 1  # D-8.3 sees no problem
+    with pytest.raises(ValueError, match="no engine version"):
+        aggregate(rows)
+
+
+@pytest.mark.parametrize("blank", ["", "   ", "\t", None])
+def test_blank_version_values_are_rejected(blank):
+    with pytest.raises(ValueError, match="no engine version"):
+        aggregate([_mkrow(version=blank)])
+
+
+def test_missing_version_key_is_rejected():
+    """A row assembled without the key at all — not just with a blank value."""
+    row = _mkrow()
+    del row["version"]
+    with pytest.raises(ValueError, match="no engine version"):
+        aggregate([row])
+
+
+def test_one_unversioned_row_among_good_ones_is_rejected():
+    """A single bad row fails the batch; it is not dropped or tolerated."""
+    with pytest.raises(ValueError, match="no engine version"):
+        aggregate([_mkrow(version="1.0.0"), _mkrow(version=""), _mkrow(version="1.0.0")])
+
+
+def test_blank_version_error_reports_counts_not_row_contents():
+    """PHI-safety of the error path: aggregate rows are numeric, but the message must
+    still stay a count/index — never a dumped row (CLAUDE.md §7, PHI never to stdout)."""
+    with pytest.raises(ValueError) as exc:
+        aggregate([_mkrow(version="", stratum="synth_ct_axial")])
+    msg = str(exc.value)
+    assert "1 of 1 rows" in msg and "row index 0" in msg
+    assert "synth_ct_axial" not in msg  # no row payload in the message
+
+
+def test_verifier_identity_carried_through():
+    agg = aggregate([
+        _mkrow(verifier_elapsed=0.1, verifier_model_name="qwen3-vl", verifier_version="1.0.0"),
+    ])
+    assert agg["verifier_model_name"] == "qwen3-vl"
+    assert agg["verifier_version"] == "1.0.0"
+
+
+def test_verifier_identity_none_when_no_verifier_ran():
+    assert aggregate([_mkrow(), _mkrow()])["verifier_model_name"] is None
+
+
+def test_refuses_to_blend_two_verifier_versions():
+    """Same primary engine, same verifier model, two verifier builds — rule #9 for the
+    second model in a gated run (D-9.1)."""
+    with pytest.raises(ValueError, match="refusing to blend"):
+        aggregate([
+            _mkrow(verifier_elapsed=0.1, verifier_model_name="qwen3-vl", verifier_version="1.0.0"),
+            _mkrow(verifier_elapsed=0.1, verifier_model_name="qwen3-vl", verifier_version="1.1.0"),
+        ])
+
+
+def test_refuses_to_blend_gated_and_ungated_rows():
+    """A primary-only row and a gated row must never average into one aggregate — plan.md
+    Phase 11 measures primary-only vs. primary+verifier separately, and this is the same
+    mixed-pair mechanism enforcing it structurally."""
+    with pytest.raises(ValueError, match="refusing to blend"):
+        aggregate([
+            _mkrow(verifier_elapsed=None),
+            _mkrow(verifier_elapsed=0.1, verifier_model_name="qwen3-vl", verifier_version="1.0.0"),
+        ])
+
+
+def test_blank_verifier_identity_rejected_even_though_every_row_agrees():
+    """The D-8.4 hole, replayed for the verifier axis: an all-blank gated batch is one
+    consistent (verifier_model_name, verifier_version) pair to the mixed-pair check alone."""
+    rows = [
+        _mkrow(verifier_elapsed=0.1, verifier_model_name="", verifier_version=""),
+        _mkrow(verifier_elapsed=0.2, verifier_model_name="", verifier_version=""),
+    ]
+    with pytest.raises(ValueError, match="ran a verifier"):
+        aggregate(rows)
+
+
+def test_non_gated_rows_never_trigger_the_verifier_identity_check():
+    # verifier_elapsed=None (the default) -> no verifier ran -> blank identity is expected,
+    # not an error.
+    agg = aggregate([_mkrow(), _mkrow()])
+    assert agg["verifier_model_name"] is None
+    assert agg["verifier_version"] is None
 
 
 def test_empty_rows_no_crash():
@@ -233,11 +363,16 @@ def test_cer_wer_are_not_top_level_ranking_keys():
 
 
 def test_aggregation_is_order_independent():
+    # One shared verifier identity across all four rows (D-9.1) — only the second row has a
+    # recorded verifier_elapsed, but the mixed-pair guard keys on identity, not elapsed, so
+    # every row in one batch must agree on identity regardless of which ones actually ran it.
+    verifier_id = dict(verifier_model_name="fake-verifier", verifier_version="0.0.0-fake")
     rows = [
-        _mkrow(stratum="A", keep_total=3, false_redaction_count=1, elapsed=0.3),
-        _mkrow(stratum="B", keep_total=1, elapsed=0.1, verifier_elapsed=0.2),
-        _mkrow(stratum="A", keep_total=2, added_count=1, elapsed=0.5),
-        _mkrow(stratum="B", negative_control=True, negative_control_floor_count=2, elapsed=0.2),
+        _mkrow(stratum="A", keep_total=3, false_redaction_count=1, elapsed=0.3, **verifier_id),
+        _mkrow(stratum="B", keep_total=1, elapsed=0.1, verifier_elapsed=0.2, **verifier_id),
+        _mkrow(stratum="A", keep_total=2, added_count=1, elapsed=0.5, **verifier_id),
+        _mkrow(stratum="B", negative_control=True, negative_control_floor_count=2, elapsed=0.2,
+               **verifier_id),
     ]
     baseline = aggregate(rows)
     shuffled = rows[:]

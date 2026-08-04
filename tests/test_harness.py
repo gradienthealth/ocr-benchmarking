@@ -124,7 +124,9 @@ def test_timer_wraps_only_run_func_not_verifier():
 
     agg = run_harness(
         [img], run, {img.id: gt},
-        allowlist=set(), verifier_func=verifier, conf_threshold=0.7,
+        allowlist=set(), verifier_func=verifier,
+        verifier_model_name="fake-verifier", verifier_version="0.0.0-fake",
+        conf_threshold=0.7,
     )
 
     lat = agg["overall"]["latency"]
@@ -191,11 +193,42 @@ def test_verifier_flips_false_redaction_to_zero():
 
     with_verifier = run_harness(
         [img], run, {img.id: gt},
-        allowlist=allowlist, verifier_func=verifier, conf_threshold=0.7,
+        allowlist=allowlist, verifier_func=verifier,
+        verifier_model_name="fake-verifier", verifier_version="0.0.0-fake",
+        conf_threshold=0.7,
     )
     # The re-read makes the KEEP token exact + allowlisted again -> kept, not redacted.
     assert with_verifier["overall"]["false_redaction_count"] == 0
     assert with_verifier["overall"]["keep_exact_match_count"] == 3
+    # Verifier identity is carried into the aggregate, same as the primary's (D-9.1).
+    assert with_verifier["verifier_model_name"] == "fake-verifier"
+    assert with_verifier["verifier_version"] == "0.0.0-fake"
+
+
+def test_run_harness_requires_verifier_identity_when_arm_active():
+    """D-9.1: the verifier arm can't run unversioned, same as the primary engine (D-8.4)."""
+    img, gt = _single(("CMFN", "ACC-0001"))
+
+    def run(i):
+        return misread_output(gt, index=0)
+
+    with pytest.raises(ValueError, match="verifier_model_name"):
+        run_harness(
+            [img], run, {img.id: gt},
+            allowlist=set(), verifier_func=lambda i, w: "X", conf_threshold=0.7,
+        )
+
+
+def test_run_harness_no_verifier_leaves_identity_none():
+    """A primary-only run must not carry a stray verifier identity."""
+    img, gt = _single(("CMFN", "ACC-0001"))
+
+    def run(i):
+        return misread_output(gt, index=0)
+
+    agg = run_harness([img], run, {img.id: gt}, allowlist=set())
+    assert agg["verifier_model_name"] is None
+    assert agg["verifier_version"] is None
 
 
 def test_verifier_inactive_without_threshold():
@@ -204,12 +237,15 @@ def test_verifier_inactive_without_threshold():
     def run(i):
         return misread_output(gt, index=0)
 
-    # verifier_func present but conf_threshold None -> arm is off, no verifier time recorded.
+    # verifier_func present but conf_threshold None -> arm is off, no verifier time recorded,
+    # and no verifier identity is required (or stamped) despite verifier_func being set.
     agg = run_harness(
         [img], run, {img.id: gt},
         allowlist=set(), verifier_func=lambda i, w: "X", conf_threshold=None,
     )
     assert agg["overall"]["verifier_latency"] is None
+    assert agg["verifier_model_name"] is None
+    assert agg["verifier_version"] is None
 
 
 # --- cost formulas match D-6.4 -------------------------------------------------

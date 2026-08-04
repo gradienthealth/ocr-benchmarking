@@ -117,11 +117,46 @@ def test_ocroutput_defaults_box_free_false():
         OCRWord(text="ACC-0001", bbox=(0.0, 0.0, 5.0, 5.0), confidence=0.5),
         OCRWord(text="CMFN", bbox=None, confidence=None),
     ]
-    out = OCROutput(words=words, raw_response={"fake": "payload"}, model_name="fake-ocr-v0")
+    out = OCROutput(
+        words=words,
+        raw_response={"fake": "payload"},
+        model_name="fake-ocr-v0",
+        version="fake-0.0.1",
+    )
     assert out.words == words
     assert out.raw_response == {"fake": "payload"}
     assert out.model_name == "fake-ocr-v0"
     assert out.box_free is False
+
+
+def test_ocroutput_requires_a_version_argument():
+    """Omitting `version` is a constructor error, not a silent "" (D-8.4).
+
+    This is the hand-built path: a script or notebook that assembles an OCROutput
+    directly is exactly how un-versioned rows would otherwise reach aggregate().
+    """
+    with pytest.raises(TypeError):
+        OCROutput(  # type: ignore[call-arg]
+            words=[OCRWord(text="CMFN", bbox=None, confidence=None)],
+            raw_response="fake-raw",
+            model_name="fake-ocr-v0",
+        )
+
+
+@pytest.mark.parametrize("blank", ["", " ", "\t", "\n  "])
+def test_ocroutput_rejects_a_blank_version(blank):
+    """Passing `version=""` explicitly is rejected too — required is not enough.
+
+    A required field only proves the argument was supplied. Whitespace counts as blank
+    because " " carries no more provenance than "" while looking set.
+    """
+    with pytest.raises(ValueError, match="non-empty exact engine version"):
+        OCROutput(
+            words=[OCRWord(text="CMFN", bbox=None, confidence=None)],
+            raw_response="fake-raw",
+            model_name="fake-ocr-v0",
+            version=blank,
+        )
 
 
 def test_ocroutput_box_free_explicit_true():
@@ -129,6 +164,7 @@ def test_ocroutput_box_free_explicit_true():
         words=[OCRWord(text="CMFN", bbox=None, confidence=None)],
         raw_response="fake-raw",
         model_name="fake-vlm-v0",
+        version="fake-vlm-0.0.1",
         box_free=True,
     )
     assert out.box_free is True
@@ -204,6 +240,7 @@ def test_ocroutput_is_mutable():
         words=[OCRWord(text="CMFN", bbox=None, confidence=None)],
         raw_response="fake-raw",
         model_name="fake-ocr-v0",
+        version="fake-0.0.1",
     )
     # OCROutput is NOT frozen: reassignment and list mutation both succeed.
     out.box_free = True

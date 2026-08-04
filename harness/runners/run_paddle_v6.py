@@ -102,6 +102,7 @@ class PaddleV6Runner(Runner):
     """PP-OCRv6_medium wired into the fixed harness loop. `run` satisfies `RunFunc` as-is."""
 
     model_name = "pp-ocrv6_medium"
+    version_source = "paddleocr"  # `version` must equal paddleocr.__version__ (contract test)
 
     def __init__(self) -> None:
         # Read from the installed library, never hand-typed (base.py's contract + rule #9).

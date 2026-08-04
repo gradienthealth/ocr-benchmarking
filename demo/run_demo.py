@@ -446,7 +446,12 @@ def section_verifier(set_hash: str, generated_at: str) -> None:
 
     results = []
     for cfg in _STUB_CONFIGS:
-        kwargs = {"verifier_func": demo_verifier, "conf_threshold": 0.60} if cfg["verifier"] else {}
+        kwargs = {
+            "verifier_func": demo_verifier,
+            "verifier_model_name": "qwen3-vl-demo",
+            "verifier_version": "demo-2026.07",
+            "conf_threshold": 0.60,
+        } if cfg["verifier"] else {}
         agg = run_harness(IMAGES, cloud_ocr_demo, GROUND_TRUTH, allowlist=ALLOWLIST, iou=0.5,
                           **kwargs)
         out_path = OUT_DIR / f"report_{cfg['key']}.md"

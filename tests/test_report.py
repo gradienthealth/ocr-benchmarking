@@ -50,6 +50,14 @@ def _mkrow(**over) -> dict:
         negative_control_floor_count=0,
         stratum="us_header",
         model_name="synth-engine",
+        # Non-empty by default: aggregate() rejects a blank version (D-8.4).
+        version="0.0.0-synthetic",
+        # Shared across every row by default (D-9.1 mirrors D-8.4): _synthetic_aggregate()
+        # below has exactly one row that actually records a verifier_elapsed, but the
+        # mixed-pair guard keys on identity, not elapsed, so every row in one batch must
+        # agree on it regardless of which ones actually ran the verifier.
+        verifier_model_name="synth-verifier",
+        verifier_version="0.0.0-synthetic",
         diagnostic=_diag(),
     )
     row.update(over)

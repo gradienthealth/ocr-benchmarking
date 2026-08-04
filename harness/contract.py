@@ -62,16 +62,35 @@ class OCROutput:
 
     model_name: str
 
-    version: str = ""
+    version: str
     # EXACT engine version string (rule #9), sourced by the runner from the real engine
-    # (e.g. the library's `__version__`) — NEVER hand-typed in the harness. "" means
-    # "not set" (legacy/test-only outputs). `aggregate()` refuses to blend rows whose
-    # `(model_name, version)` differ, so a version bump can never silently merge with
-    # prior results (D-8.3).
+    # (e.g. the library's `__version__`) — NEVER hand-typed in the harness. REQUIRED and
+    # validated non-empty in `__post_init__` (D-8.4): there is no "not set" state, because
+    # a batch in which every row is blank looks like one consistent `(model_name, version)`
+    # pair to `aggregate()` and would be averaged across engine builds silently.
+    # `aggregate()` refuses to blend rows whose `(model_name, version)` differ, so a
+    # version bump can never merge with prior results (D-8.3).
 
     box_free: bool = False
     # True for the VLM "blob" path (a single text response, no per-word boxes). Set by
     # the runner. Box-free outputs keep the primary engine's box and swap only the string.
+
+    def __post_init__(self) -> None:
+        """Reject a blank version at construction — the earliest point it can be caught.
+
+        Making the field required stops an OMITTED version (TypeError from the dataclass
+        constructor); this stops an EXPLICITLY BLANK one. Both matter, and neither is a
+        runner-only concern: a hand-built `OCROutput` in a script or notebook is exactly
+        how un-versioned rows would otherwise reach `aggregate()`. Fixtures must pass an
+        explicit marker (e.g. `"0.0.0-synthetic"`), not "".
+        """
+        if not self.version.strip():
+            raise ValueError(
+                "OCROutput.version must be a non-empty exact engine version string "
+                "(rule #9) — source it from the engine itself (e.g. the library's "
+                "__version__), never hand-type it. Synthetic fixtures should pass an "
+                "explicit marker such as '0.0.0-synthetic'."
+            )
 
 
 @dataclass(frozen=True)

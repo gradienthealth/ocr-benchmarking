@@ -14,6 +14,7 @@ from harness.contract import GTToken, OCROutput, OCRWord, normalize
 from harness.matching import iou, match
 from tests.synthetic import (
     SYNTHETIC_RAW_RESPONSE,
+    SYNTHETIC_VERSION,
     box_free_output,
     hallucination_output,
     make_synthetic_image,
@@ -31,7 +32,12 @@ def _gt(tokens=_TOKENS) -> list[GTToken]:
 
 
 def _boxed_output(words: list[OCRWord], model_name: str = "synthetic-handmade") -> OCROutput:
-    return OCROutput(words=words, raw_response=SYNTHETIC_RAW_RESPONSE, model_name=model_name)
+    return OCROutput(
+        words=words,
+        raw_response=SYNTHETIC_RAW_RESPONSE,
+        model_name=model_name,
+        version=SYNTHETIC_VERSION,
+    )
 
 
 # --- iou() -------------------------------------------------------------------
@@ -222,6 +228,7 @@ def test_box_free_normalize_applied():
         words=[OCRWord(text=f"header {decomposed} CMFN", bbox=None, confidence=None)],
         raw_response=SYNTHETIC_RAW_RESPONSE,
         model_name="synthetic-boxfree",
+        version=SYNTHETIC_VERSION,
         box_free=True,
     )
     result = match(blob, gt_composed)
@@ -243,6 +250,7 @@ def test_box_free_order_independence():
             words=ws,
             raw_response=SYNTHETIC_RAW_RESPONSE,
             model_name="synthetic-boxfree",
+            version=SYNTHETIC_VERSION,
             box_free=True,
         )
 

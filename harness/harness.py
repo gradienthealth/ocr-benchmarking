@@ -101,6 +101,8 @@ def run_harness(
     *,
     allowlist: set[str],
     verifier_func: Optional[VerifierFunc] = None,
+    verifier_model_name: Optional[str] = None,
+    verifier_version: Optional[str] = None,
     conf_threshold: Optional[float] = None,
     iou: float = 0.5,
 ) -> dict:
@@ -114,7 +116,31 @@ def run_harness(
     `stratum`/`modality`/`vendor`/`image_id`/`model_name` are stamped onto each row from the
     authoritative `ImageRef`/`OCROutput` (not the GT-derived values, which are `None` on blank
     controls).
+
+    When the arm is active, `verifier_model_name`/`verifier_version` are REQUIRED and must be
+    non-blank — the exact same rule #9 protection already applied to the primary engine
+    (`OCROutput.version`, D-8.4), extended to the second model in a gated run. Without this, two
+    gated runs whose verifier silently changed between them (a version bump, a swapped model)
+    would carry identical `(model_name, version)` and merge in `aggregate()` with nothing to
+    flag it — the primary engine's identity says nothing about the verifier's.
+
+    Raises:
+        ValueError: `verifier_func` + `conf_threshold` are both given but `verifier_model_name`
+            or `verifier_version` is missing/blank.
     """
+    verifier_active = verifier_func is not None and conf_threshold is not None
+    if verifier_active:
+        blank_name = verifier_model_name is None or not verifier_model_name.strip()
+        blank_version = verifier_version is None or not verifier_version.strip()
+        if blank_name or blank_version:
+            raise ValueError(
+                "run_harness(): the verifier arm is active (verifier_func + conf_threshold "
+                "given) but verifier_model_name/verifier_version is missing or blank. Source "
+                "the verifier's exact version the same way a runner sources its own (never "
+                "hand-typed) — an unversioned gated run cannot be shown to come from the same "
+                "verifier build as its neighbours."
+            )
+
     rows = []
     for img in images:
         t0 = perf_counter()
@@ -140,6 +166,8 @@ def run_harness(
         row["model_name"] = out.model_name
         row["version"] = out.version
         row["verifier_elapsed"] = verifier_elapsed
+        row["verifier_model_name"] = verifier_model_name if verifier_active else None
+        row["verifier_version"] = verifier_version if verifier_active else None
         rows.append(row)
 
     return aggregate(rows)

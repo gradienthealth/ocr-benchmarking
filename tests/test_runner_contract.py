@@ -19,6 +19,8 @@ this file:
 
 from __future__ import annotations
 
+import importlib
+
 import pytest
 
 from harness.contract import GTToken, OCROutput, OCRWord
@@ -133,20 +135,55 @@ def test_runner_contract(runner: Runner, synthetic_image):
     assert isinstance(out.version, str) and out.version
 
 
+# Runners allowed to declare `version_source = None` — test doubles with no library behind
+# them. Membership is by class and lives HERE, in the test, on purpose: a real engine can
+# only opt out of the sourcing check by editing this list, which a reviewer sees in the diff.
+_NO_LIBRARY_VERSION = (EchoRunner,)
+
+
+@pytest.mark.parametrize("runner", REGISTERED_RUNNERS, ids=lambda r: r.model_name)
+def test_runner_version_comes_from_its_library(runner: Runner):
+    """`version` must be read from the installed library, never hand-typed (rule #9).
+
+    The check is generic: each runner names the module it sources its version from
+    (`version_source`), and this test imports that module and compares. So registering a
+    new engine gets the sourcing guarantee automatically — the previous design asserted it
+    in three separate per-engine tests, which meant a fourth runner hardcoding
+    `version = "2.0"` would have passed the whole suite.
+
+    What this still cannot prove: that the version string identifies the *system* that
+    produced the results. These engines download model weights separately from the pip
+    package, so identical `__version__` can front different weights, and engine config
+    (thresholds, arch names) is not in the string at all. Closing that needs a run
+    fingerprint over weights + config, not a stricter version check.
+    """
+    if runner.version_source is None:
+        assert isinstance(runner, _NO_LIBRARY_VERSION), (
+            f"{type(runner).__name__} declares version_source=None but is not a registered "
+            "test double — a real engine must name the library its version comes from"
+        )
+        assert runner.version, "even a test double needs a non-empty version"
+        return
+
+    module = importlib.import_module(runner.version_source)
+    library_version = getattr(module, "__version__", None)
+    assert library_version, (
+        f"{runner.version_source} exposes no usable __version__; pick a module that does, "
+        "or the runner's version is effectively hand-typed"
+    )
+    assert runner.version == library_version, (
+        f"{type(runner).__name__}.version is {runner.version!r} but "
+        f"{runner.version_source}.__version__ is {library_version!r} — read it from the "
+        "library instead of hand-typing it (rule #9)"
+    )
+    assert runner.version  # non-empty: aggregate() keys on (model_name, version)
+
+
 def test_doctr_runner_is_registered():
     """Fail loud, not silent: an absent engine must be visible, not just missing."""
     if _DOCTR_RUNNER is None:
         pytest.skip(_NO_DOCTR)
     assert any(r.model_name == "doctr" for r in REGISTERED_RUNNERS)
-
-
-@requires_doctr
-def test_doctr_version_comes_from_the_library():
-    """`version` must be the installed library's own string, never hand-typed (rule #9)."""
-    import doctr
-
-    assert _DOCTR_RUNNER.version == doctr.__version__
-    assert _DOCTR_RUNNER.version  # non-empty: aggregate() keys on (model_name, version)
 
 
 @requires_doctr
@@ -190,15 +227,6 @@ def test_paddle_runner_is_registered():
     if _PADDLE_RUNNER is None:
         pytest.skip(_NO_PADDLE)
     assert any(r.model_name == "pp-ocrv6_medium" for r in REGISTERED_RUNNERS)
-
-
-@requires_paddle
-def test_paddle_version_comes_from_the_library():
-    """`version` must be the installed library's own string, never hand-typed (rule #9)."""
-    import paddleocr
-
-    assert _PADDLE_RUNNER.version == paddleocr.__version__
-    assert _PADDLE_RUNNER.version  # non-empty: aggregate() keys on (model_name, version)
 
 
 @requires_paddle
@@ -316,15 +344,6 @@ def test_easyocr_runner_is_registered():
     if _EASYOCR_RUNNER is None:
         pytest.skip(_NO_EASYOCR)
     assert any(r.model_name == "easyocr" for r in REGISTERED_RUNNERS)
-
-
-@requires_easyocr
-def test_easyocr_version_comes_from_the_library():
-    """`version` must be the installed library's own string, never hand-typed (rule #9)."""
-    import easyocr
-
-    assert _EASYOCR_RUNNER.version == easyocr.__version__
-    assert _EASYOCR_RUNNER.version  # non-empty: aggregate() keys on (model_name, version)
 
 
 @requires_easyocr

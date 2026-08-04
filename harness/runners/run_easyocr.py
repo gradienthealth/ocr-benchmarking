@@ -105,6 +105,7 @@ class EasyOcrRunner(Runner):
     """EasyOCR wired into the fixed harness loop. `run` satisfies `RunFunc` as-is."""
 
     model_name = "easyocr"
+    version_source = "easyocr"  # `version` must equal easyocr.__version__ (contract test)
 
     def __init__(self) -> None:
         # Read from the installed library, never hand-typed (base.py's contract + rule #9).
