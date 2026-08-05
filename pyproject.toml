@@ -73,7 +73,11 @@ paddle = ["paddleocr==3.7.0", "paddlepaddle==3.3.1"]
 easyocr = ["easyocr==1.7.2"]
 
 [tool.setuptools.packages.find]
-include = ["harness*"]
+# `ground_truth*` added for Phase 10a: `gt_schema.py` is imported by the tests now and by
+# `build_gt.py` (10e) / the real run loop (Phase 13) later, so it needs one import form that
+# works under pytest, under `pip install -e .`, and from any cwd. Source files only —
+# setuptools ships no package data, so `gt.csv` (gitignored) can never be packaged.
+include = ["harness*", "ground_truth*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
