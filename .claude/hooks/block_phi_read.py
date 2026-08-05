@@ -24,7 +24,19 @@ PHI_EXT = (
     ".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".gif", ".webp",
     ".npy", ".npz",
 )
-PHI_NAME = re.compile(r"(^|/)(gt\.csv|ground_truth.*\.csv|.*raw_response.*)$", re.I)
+# ADD-ONLY (Phase 10b): `*render_backmap*` is the image_id -> SOPInstanceUID/series_uid
+# map written by ground_truth/render.py. It is PHI-adjacent (linkable identifiers) and must
+# never reach Claude. `*render_inputs*` is the human-authored path+frame list, which also
+# holds series UIDs. Both already fall under `ground_truth.*\.csv` at their default paths;
+# these alternatives keep them READ-denied wherever they are put. Nothing above is loosened.
+# KNOWN GAP (pre-existing, same for gt.csv): this list only gates the Read tool. `cat`/
+# `grep` on these files via Bash is caught by §2a only if the path matches an image/DICOM
+# pattern, which a .csv does not. Closing that means widening the Bash patterns for gt.csv
+# too — a separate decision, not a Phase 10b change.
+PHI_NAME = re.compile(
+    r"(^|/)(gt\.csv|ground_truth.*\.csv|.*raw_response.*|.*render_backmap.*|.*render_inputs.*)$",
+    re.I,
+)
 
 # ---- 2. Bash patterns, grouped by failure mode ----
 # 2a. PHI -> stdout (returns to Claude's context)
