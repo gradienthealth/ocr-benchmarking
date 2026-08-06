@@ -25,6 +25,16 @@ ground_truth/*.csv
 **/raw_response*
 label-studio*/
 label_studio*/
+# Phase 10c / D-10c.8: Tesseract seed output. `ground_truth/seed/<image_id>.json` holds the
+# read-back token text for each image — that IS the PHI, same class as gt.csv. Scoped to the
+# `seed/` directory ONLY, never `ground_truth/*.json`, because the sibling summary must stay
+# readable. NOTE (see the warning further down): git has no inline comments — every comment
+# here is on its own line.
+ground_truth/seed/
+# `seed_summary.json` is PHI-free (per-image counts only) so Arnav can still open it, but it
+# is regenerable output and a per-image count table is not something to publish — ignore it
+# as a build artifact, not as PHI (Phase 10c / D-10c.8).
+ground_truth/seed_summary.json
 
 # Bulk data dirs / renders / caches
 data/

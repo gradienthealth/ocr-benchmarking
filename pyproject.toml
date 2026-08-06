@@ -71,6 +71,29 @@ paddle = ["paddleocr==3.7.0", "paddlepaddle==3.3.1"]
 # Weights (CRAFT detector + english_g2 recognizer) download once into ~/.EasyOCR/model from
 # the project's public release assets; no image ever leaves the environment.
 easyocr = ["easyocr==1.7.2"]
+#
+# Tesseract (Phase 10c, GT-seeding arm — D-10c.5). pip installs the WRAPPER ONLY:
+# `pytesseract` is a thin subprocess shim, it bundles no OCR. The things that actually decide
+# what a seed says are system-level and installed separately — the `tesseract` binary, its
+# Leptonica image backend, and the `eng.traineddata` language model. A bump to ANY of those
+# three changes the seed output while this pin stays identical, and that invalidates every
+# seed already written exactly the way an engine bump invalidates results (CLAUDE.md rule #9):
+# re-seed, don't mix, surface it loudly. That is why the seeder records a version for each of
+# the three and a sha256 for the traineddata — the pin below is not the provenance.
+#
+#   sudo apt-get install -y tesseract-ocr
+#   # tessdata_best (D-10c.2b: the settled variant; apt ships `standard`, not `best`)
+#   sudo curl -fsSL -o /usr/share/tesseract-ocr/5/tessdata/eng.traineddata \
+#       https://github.com/tesseract-ocr/tessdata_best/raw/main/eng.traineddata
+#   pip install -e ".[tesseract]"
+#
+# The tessdata path above is Debian/Ubuntu-specific and varies by distro and major version
+# (e.g. /usr/share/tessdata, /usr/local/share/tessdata, Homebrew's Cellar path) — confirm it
+# on the host rather than assuming. The seeding script never guesses: it takes --tessdata-dir
+# explicitly and hashes the traineddata it was actually pointed at.
+# Resolved in-env 2026-08-06: pytesseract 0.3.13 (wrapper pin only; binary/Leptonica/
+# traineddata versions + traineddata sha256 are recorded per-run in the seed metadata).
+tesseract = ["pytesseract==0.3.13"]
 
 [tool.setuptools.packages.find]
 # `ground_truth*` added for Phase 10a: `gt_schema.py` is imported by the tests now and by

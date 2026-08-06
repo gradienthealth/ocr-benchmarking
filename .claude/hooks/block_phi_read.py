@@ -33,8 +33,16 @@ PHI_EXT = (
 # `grep` on these files via Bash is caught by §2a only if the path matches an image/DICOM
 # pattern, which a .csv does not. Closing that means widening the Bash patterns for gt.csv
 # too — a separate decision, not a Phase 10b change.
+# ADD-ONLY (Phase 10c / D-10c.8): `ground_truth/seed/<image_id>.json` is the per-image
+# Tesseract seed — it contains the read-back token text, i.e. the PHI itself, same class as
+# gt.csv. The branch is deliberately `ground_truth/seed/.*` (trailing slash REQUIRED) and not
+# `ground_truth/.*\.json`: the sibling `ground_truth/seed_summary.json` is a PHI-free count
+# table Arnav must still be able to read, and a wider pattern would block it and defeat its
+# purpose. `.*$` reaches end-of-string, so the branch satisfies the enclosing `(^|/)(...)$`.
+# Nothing above is loosened.
 PHI_NAME = re.compile(
-    r"(^|/)(gt\.csv|ground_truth.*\.csv|.*raw_response.*|.*render_backmap.*|.*render_inputs.*)$",
+    r"(^|/)(gt\.csv|ground_truth.*\.csv|.*raw_response.*|.*render_backmap.*|.*render_inputs.*"
+    r"|ground_truth/seed/.*)$",
     re.I,
 )
 
@@ -53,6 +61,13 @@ PHI_READ = [
      "printing DICOM pixels/tags/tokens routes PHI into context"),
     (re.compile(r"\b(imshow|Image\.open|display)\b[^\n]*\.(png|jpe?g|tiff?|bmp|dcm)\b", re.I),
      "opening/displaying a rendered image into context"),
+    # ADD-ONLY (Phase 10c / D-10c.8): Bash-side companion to the PHI_NAME branch above. The
+    # literal path segment `ground_truth/seed/` (trailing slash REQUIRED) keeps this narrow —
+    # it cannot match `ground_truth/seed_summary.json` (PHI-free, must stay readable) nor
+    # `ground_truth/seed_tesseract.py` (source). Closes for the seed files the KNOWN GAP noted
+    # above for gt.csv; that gap is left as-is, nothing here is loosened.
+    (re.compile(r"\b(cat|head|tail|less|more|jq|grep|strings|base64)\b[^\n|]*ground_truth/seed/", re.I),
+     "dumping a Tesseract seed file (contains read-back PHI token text) into context"),
 ]
 # 2b. Network egress (could send PHI off the machine / to a non-BAA endpoint)
 EGRESS = [

@@ -8,7 +8,10 @@ set -euo pipefail
 mapfile -d '' staged < <(git diff --cached --name-only -z --diff-filter=ACM)
 
 phi_regex='\.(dcm|dicom|tar|png|jpg|jpeg|tif|tiff|bmp|gif|webp|npy|npz)$'
-name_regex='(^|/)(gt\.csv|.*raw_response.*|manifest\.csv)$'
+# Phase 10c / D-10c.8: `ground_truth/seed/` holds the per-image Tesseract seed JSONs, which
+# contain read-back PHI token text. Trailing slash is REQUIRED so the PHI-free sibling
+# `ground_truth/seed_summary.json` is NOT matched. Add-only; no existing branch changed.
+name_regex='(^|/)(gt\.csv|.*raw_response.*|manifest\.csv|ground_truth/seed/.*)$'
 
 blocked=()
 for f in "${staged[@]:-}"; do
