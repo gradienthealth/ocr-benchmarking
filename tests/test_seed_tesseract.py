@@ -518,7 +518,13 @@ def test_the_pinned_tesseract_configuration_is_frozen() -> None:
     assert seed_tesseract.LANG == "eng"
     assert seed_tesseract.UPSCALE_FACTOR == 2
     assert seed_tesseract.UPSCALE_FILTER_NAME == "PIL.Image.Resampling.LANCZOS"
-    assert seed_tesseract.TIMEOUT_S == 60
+    # Re-pinned 60 -> 600 on 2026-08-07, in the SAME change that re-seeds all 199 gt_v2 images
+    # (the docstring's condition for touching a literal here). Two mg_2d frames reproducibly hit
+    # the 60s ceiling and were silently dropped from the seed set. Unlike every other value in
+    # this test, a timeout cannot change what Tesseract computes — only whether it is allowed to
+    # finish — so the 197 that already succeeded re-seed byte-identically. It is re-pinned rather
+    # than removed because it is still recorded in provenance and still defines the run.
+    assert seed_tesseract.TIMEOUT_S == 600
     assert seed_tesseract.WORD_LEVEL == 5
     assert seed_tesseract.CONF_FALLBACK == -1.0
     assert seed_tesseract.ROW_FILTER == "level == 5 AND text.strip() != ''"

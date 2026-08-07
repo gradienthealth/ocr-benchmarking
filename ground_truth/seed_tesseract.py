@@ -133,7 +133,17 @@ CONF_PARSE = "float(conf), fallback -1.0, kept as-is (never dropped)"
 CONF_FALLBACK = -1.0
 
 TESSERACT_ENV = {"LC_ALL": "C", "LC_NUMERIC": "C", "OMP_THREAD_LIMIT": "1"}
-TIMEOUT_S = 60
+# Raised 60 -> 600 on 2026-08-07. Two mg_2d frames (3510x4644 -> 65 MP after the 2x upscale)
+# reproducibly hit the 60s ceiling and came back as pytesseract's bare
+# RuntimeError('Tesseract process timeout'), so 197/199 seeded and the two dropped out silently
+# — exactly the D-10c.4 failure this seeder exists to prevent. Runtime tracks candidate-region
+# count, not pixel count: larger frames in the same set (3584x4784) finished well inside 60s.
+# A timeout is NOT an OCR parameter — it cannot change what Tesseract computes, only whether it
+# is allowed to finish — so a re-seed at 600 reproduces a 60s run's tokens byte for byte on every
+# image that already succeeded. It stays a module constant rather than a CLI flag for the same
+# reason `--out` is required: one recorded value, applied to everything, no per-run drift.
+# Still recorded in the provenance block; a run at a different value is still a different run.
+TIMEOUT_S = 600
 WORD_LEVEL = 5
 
 SEED_DIR_NAME = "seed"
