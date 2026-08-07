@@ -1,0 +1,358 @@
+<meta charset="utf-8">
+<title>10d review</title>
+<!--
+  Phase 10d review page. 🔴 PHI-DISPLAYING - Arnav opens this, never Claude.
+
+  ZERO EGRESS BY CONSTRUCTION: no CDN, no remote font, no telemetry, no analytics, no
+  external stylesheet or script. Every fetch target below is a same-origin relative path
+  served by review_gt.py, which binds 127.0.0.1 only. Do not add an absolute URL here -
+  the point is that the page is INCAPABLE of egress, not that we argue about whether a
+  given request carried PHI. (JS comments in this file are block comments on purpose:
+  a double-slash is what the zero-egress test greps for.)
+
+  Token text travels only in fetch BODIES - never in a URL, query string or header.
+  Every path is keyed by image_id, which is already a hash.
+-->
+<style>
+  body { font: 13px system-ui, sans-serif; margin: 0; background: #14161a; color: #e6e6e6; }
+  header { display: flex; gap: 14px; align-items: center; padding: 8px 12px;
+           background: #1d2026; flex-wrap: wrap; }
+  .panes { display: flex; gap: 10px; padding: 10px; align-items: flex-start; }
+  canvas { background: #000; max-width: 100%; }
+  .col { flex: 1; min-width: 0; }
+  .lbl { color: #8a94a6; font-size: 11px; text-transform: uppercase; }
+  #side { width: 300px; max-height: 78vh; overflow: auto; }
+  .tok { display: flex; gap: 4px; margin-bottom: 3px; align-items: center; }
+  .tok input[type=text] { flex: 1; min-width: 0; background: #23262d; color: #e6e6e6;
+                          border: 1px solid #3a3f4a; padding: 2px 4px; }
+  .tok.sel input[type=text] { border-color: #f5a623; }
+  button { background: #2b303a; color: #e6e6e6; border: 1px solid #3a3f4a; padding: 2px 7px;
+           cursor: pointer; }
+  .badge { padding: 2px 8px; border-radius: 3px; background: #3a3f4a; }
+  .accepted { background: #245c2c; } .edited { background: #6b4a12; }
+  .deferred { background: #6b1f1f; } .unreviewed { background: #3a3f4a; }
+  footer { padding: 6px 12px; color: #8a94a6; }
+  #defer { display: none; padding: 8px 12px; background: #2a1d1d; }
+</style>
+
+<header>
+  <b id="iid">-</b>
+  <span class="lbl" id="stratum"></span>
+  <span class="badge unreviewed" id="state">unreviewed</span>
+  <span>conf &ge; <b id="gateval">0</b>
+    <input type="range" id="gate" min="0" max="100" step="1" value="0">
+    <span class="lbl" id="gatedef"></span></span>
+  <span class="lbl" id="counts"></span>
+  <span class="lbl" id="msg"></span>
+</header>
+
+<div id="defer">
+  defer reason:
+  <select id="reason">
+    <option value="unreadable">unreadable</option>
+    <option value="ambiguous_token">ambiguous_token</option>
+    <option value="possible_non_blank_control">possible_non_blank_control</option>
+    <option value="needs_cal">needs_cal</option>
+  </select>
+  <!-- spellcheck/autocomplete OFF on every field that can hold token text: Chrome's Enhanced
+       Spellcheck and Edge Editor send field contents to a vendor server, and autofill persists
+       them into a syncable browser profile. Neither is a fetch, so "no outbound fetch" would
+       not have covered it. -->
+  <input type="text" id="note" placeholder="optional note (private, never summarized)" size="50"
+         spellcheck="false" autocomplete="off" autocapitalize="off" autocorrect="off">
+  <button onclick="saveDefer()">save deferred</button>
+  <button onclick="hideDefer()">cancel</button>
+</div>
+
+<div class="panes">
+  <!-- BOTH panes are required and neither is collapsible: an overlay hides the pixels
+       underneath it, which is exactly where a missed or mis-bounded token lives. -->
+  <div class="col"><div class="lbl">original</div><canvas id="raw"></canvas></div>
+  <div class="col"><div class="lbl">seed boxes</div><canvas id="ovl"></canvas></div>
+  <div id="side"><div class="lbl">tokens (shown = kept)</div><div id="toks"></div></div>
+</div>
+
+<footer id="help">
+  A accept &middot; E edit mode &middot; D defer &middot; &larr;/&rarr; prev/next image
+  (nudge selected box when one is selected; shift+arrow resizes) &middot;
+  Del delete box &middot; Esc deselect &middot; drag on the right pane to draw
+</footer>
+
+<script>
+let index = [], pos = 0, cur = null, toks = [], sel = -1, gate = 0, edit = false, scale = 1;
+const img = new Image();
+const raw = document.getElementById('raw'), ovl = document.getElementById('ovl');
+
+function msg(t) { document.getElementById('msg').textContent = t; }
+
+/* Mirrors review_gt.visible(). Two tokens are never hidden at any gate value: one drawn by
+   hand (confidence null - not a Tesseract detection), and one with confidence < 0, which is
+   seed_tesseract's CONF_FALLBACK meaning Tesseract reported NO confidence at all. "No signal"
+   is not "low confidence". There is also NO length floor at any gate value - a single-char
+   `L` is real content, and a misread `L` that gets redacted IS a false redaction, the
+   headline metric. */
+function visible(t, g) {
+  if (g === undefined) g = gate;
+  /* `== null` matches BOTH null and undefined on purpose: a token whose confidence key is
+     missing is the same "no signal" case as the explicit null, and hiding it at every gate -
+     including c0 - would be the silent deletion this design exists to prevent. */
+  return t.confidence == null || t.confidence < 0 || t.confidence >= g;
+}
+
+async function boot() {
+  index = await (await fetch('/api/index')).json();
+  index.sort((a, b) => a.image_id < b.image_id ? -1 : 1);
+  await load(0);
+}
+
+function seedTokens() {
+  return cur.seed_tokens.map((t, k) => ({
+    text: t.text, box: t.bbox.slice(), label: t.label,
+    confidence: t.confidence, seed_index: k
+  }));
+}
+
+/* Re-opening a reviewed image must show the SAVED state, not the raw seed - but the saved
+   record only holds the tokens that were VISIBLE at the gate it was saved at. Replacing the
+   working set with it outright would make the hidden ones unrecoverable, and "an over-filtered
+   stratum is fixed by moving the slider" (the whole point of A3) would be false after the
+   first save. So: start from the seed, overlay every saved token onto its seed_index, keep
+   hand-added ones, and DROP seed tokens that were visible at the saved gate yet absent from
+   the record - those the human deleted on purpose, and a deletion must stick. */
+function restoreSaved() {
+  const byIndex = new Map();
+  const added = [];
+  for (const t of cur.saved.tokens) {
+    if (t.seed_index == null) added.push({ ...t });
+    else byIndex.set(t.seed_index, { ...t });
+  }
+  /* A deletion is recorded EXPLICITLY (deleted_seed_indexes) rather than inferred from
+     "absent from tokens at the saved gate". Inferring it was wrong in both directions:
+     delete a token, then raise the gate above its confidence before saving, and it came back
+     as if it had merely been hidden. */
+  const dropped = new Set(cur.saved.deleted_seed_indexes || []);
+  toks = toks
+    .filter(t => !dropped.has(t.seed_index))
+    .map(t => byIndex.get(t.seed_index) || t)
+    .concat(added);
+}
+
+let loadSeq = 0;
+async function load(i) {
+  if (i < 0 || i >= index.length) return;
+  /* Auto-repeat on an arrow key fires several loads at once and their responses can land out
+     of order, leaving `cur` on one image while `pos` points at another - after which a
+     decision writes the wrong record. Only the newest load is allowed to install its result. */
+  const mine = ++loadSeq;
+  pos = i; sel = -1; edit = false; hideDefer();
+  const data = await (await fetch('/api/image/' + index[i].image_id)).json();
+  if (mine !== loadSeq) return;
+  cur = data;
+  gate = cur.saved ? cur.saved.gate.conf : cur.default_gate;
+  toks = seedTokens();
+  if (cur.saved) restoreSaved();
+  document.getElementById('iid').textContent = cur.image_id;
+  document.getElementById('stratum').textContent = cur.stratum;
+  document.getElementById('gatedef').textContent = '(stratum default c' + cur.default_gate + ')';
+  const st = index[i].state;
+  document.getElementById('state').className = 'badge ' + st;
+  document.getElementById('state').textContent = st;
+  const n = s => index.filter(x => x.state === s).length;
+  document.getElementById('counts').textContent =
+    n('accepted') + ' accepted, ' + n('edited') + ' edited, ' + n('deferred') + ' deferred, ' +
+    n('unreviewed') + ' left';
+  msg('');
+  img.src = '/api/png/' + cur.image_id;
+  await img.decode().catch(() => {});
+  if (mine !== loadSeq) return;  /* a newer load owns `img` now - do not draw stale pixels */
+  draw();
+}
+
+function draw() { drawCanvas(); drawList(); }
+
+function drawCanvas() {
+  document.getElementById('gate').value = gate;
+  document.getElementById('gateval').textContent = gate;
+  const maxw = Math.max(280, Math.floor((window.innerWidth - 360) / 2) - 20);
+  scale = Math.min(1, maxw / cur.w);
+  for (const c of [raw, ovl]) {
+    c.width = Math.round(cur.w * scale); c.height = Math.round(cur.h * scale);
+    const g = c.getContext('2d');
+    g.imageSmoothingEnabled = false;
+    g.drawImage(img, 0, 0, c.width, c.height);
+  }
+  const g = ovl.getContext('2d');
+  g.lineWidth = 1; g.font = '11px monospace';
+  toks.forEach((t, i) => {
+    if (!visible(t)) return;
+    const [x0, y0, x1, y1] = t.box.map(v => v * scale);
+    g.strokeStyle = i === sel ? '#f5a623' : (t.label === 'PHI' ? '#39d353' : '#4aa3ff');
+    g.strokeRect(x0, y0, x1 - x0, y1 - y0);
+    g.fillStyle = g.strokeStyle;
+    g.fillText(t.text, x0, y0 > 10 ? y0 - 2 : y1 + 10);
+  });
+}
+
+function drawList() {
+  const box = document.getElementById('toks');
+  box.textContent = '';
+  toks.forEach((t, i) => {
+    if (!visible(t)) return;
+    const row = document.createElement('div');
+    row.className = 'tok' + (i === sel ? ' sel' : '');
+    const inp = document.createElement('input');
+    inp.type = 'text'; inp.value = t.text; inp.disabled = !edit;
+    /* see the note field: browser spellcheck/autofill is an egress path that is not a fetch */
+    inp.spellcheck = false;
+    inp.autocomplete = 'off';
+    inp.setAttribute('autocapitalize', 'off');
+    inp.setAttribute('autocorrect', 'off');
+    inp.oninput = () => { t.text = inp.value; drawCanvas(); };
+    inp.onfocus = () => { sel = i; draw(); };
+    const lab = document.createElement('button');
+    lab.textContent = t.label; lab.disabled = !edit;
+    lab.onclick = () => { t.label = t.label === 'PHI' ? 'KEEP' : 'PHI'; draw(); };
+    const del = document.createElement('button');
+    del.textContent = 'x'; del.disabled = !edit;
+    del.onclick = () => { toks.splice(i, 1); sel = -1; draw(); };
+    row.append(inp, lab, del);
+    box.append(row);
+  });
+}
+
+/* --- drawing / selecting on the overlay pane --- */
+let dragStart = null;
+ovl.onmousedown = e => {
+  if (!edit) return;
+  const r = ovl.getBoundingClientRect();
+  dragStart = [(e.clientX - r.left) / scale, (e.clientY - r.top) / scale];
+};
+ovl.onmouseup = e => {
+  if (!edit || !dragStart) return;
+  const r = ovl.getBoundingClientRect();
+  const x = (e.clientX - r.left) / scale, y = (e.clientY - r.top) / scale;
+  const [sx, sy] = dragStart; dragStart = null;
+  if (Math.abs(x - sx) < 3 && Math.abs(y - sy) < 3) {
+    sel = toks.findIndex((t, i) => visible(t) &&
+      x >= t.box[0] && x <= t.box[2] && y >= t.box[1] && y <= t.box[3]);
+  } else {
+    /* a hand-drawn box: confidence null so no gate can ever hide it, seed_index null so
+       --summary counts it as "added by hand" rather than a kept seed box. */
+    toks.push({
+      text: '', box: [Math.min(sx, x), Math.min(sy, y), Math.max(sx, x), Math.max(sy, y)],
+      label: 'PHI', confidence: null, seed_index: null
+    });
+    sel = toks.length - 1;
+  }
+  draw();
+};
+
+/* --- saving --- */
+function deletedIndexes() {
+  /* every seed index no longer in the working set - regardless of the current gate, because
+     `toks` keeps hidden tokens and drops only deleted ones */
+  const live = new Set(toks.map(t => t.seed_index).filter(i => i != null));
+  return cur.seed_tokens.map((t, k) => k).filter(k => !live.has(k));
+}
+
+async function save(state, extra) {
+  /* Hidden means EXCLUDED from the record, not "accepted": a token below the gate is not
+     written into the token list at all. It still exists in the frozen seed on disk, so an
+     over-filtered stratum is fixed by moving the slider, not by re-seeding. */
+  const keep = toks.filter(t => visible(t));
+  /* the server rejects an empty token outright; say so here, where the message can be useful */
+  if (state !== 'deferred' && keep.some(t => !t.text.trim())) {
+    msg('a box has no text - type it or delete it (Del)');
+    return false;
+  }
+  const body = Object.assign({
+    /* `t => visible(t)`, never a bare `visible`: Array.filter passes the element INDEX as the
+       second argument, which would silently become the gate value. */
+    state: state, gate: { conf: gate }, tokens: keep,
+    deleted_seed_indexes: deletedIndexes()
+  }, extra || {});
+  /* Capture the identity BEFORE the await. `pos` can move under us (an arrow key during the
+     round trip), so marking `index[pos]` afterwards would stamp the decision onto whatever
+     image is on screen when the response lands - writing a record for one image and marking
+     another as reviewed, which auto-advance would then skip forever. Identity is the hash. */
+  const id = cur.image_id;
+  let r;
+  try {
+    r = await fetch('/api/save/' + id, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+  } catch (e) { msg('SAVE FAILED - staying on this image'); return false; }
+  if (!r.ok) { msg('SAVE FAILED - staying on this image'); return false; }
+  const row = index.find(x => x.image_id === id);
+  if (row) row.state = state;
+  return true;
+}
+
+/* Auto-advance is safe ONLY because the write completes first and re-opening an image shows
+   its saved state: arrow back plus a fresh decision fully rewrites the record, so undo is
+   free and needs no undo stack. Never fire-and-forget - a fast A A A must not outrun a save. */
+let busy = false;
+async function decide(state, extra) {
+  /* A keydown handler cannot await, so `decide` is fire-and-forget: without this guard a fast
+     `A A A` starts three overlapping decisions and the later ones race the reload. One
+     in-flight decision at a time; extra keystrokes are dropped, never queued. */
+  if (busy) return false;
+  busy = true;
+  try {
+    if (!await save(state, extra)) return false;
+    const next = index.findIndex(x => x.state === 'unreviewed');
+    await load(next === -1 ? pos : next);
+    return true;
+  } finally { busy = false; }
+}
+
+function showDefer() { document.getElementById('defer').style.display = 'block'; }
+function hideDefer() { document.getElementById('defer').style.display = 'none'; }
+async function saveDefer() {
+  const note = document.getElementById('note').value;
+  const ok = await decide('deferred', {
+    defer_reason: document.getElementById('reason').value,
+    note: note || null
+  });
+  /* only on success: clearing after a failed save discards what was typed */
+  if (ok) document.getElementById('note').value = '';
+}
+
+document.getElementById('gate').oninput = e => { gate = +e.target.value; draw(); };
+
+document.onkeydown = e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') {
+    if (e.key === 'Escape') e.target.blur();
+    return;
+  }
+  const k = e.key;
+  if (k === 'a' || k === 'A') decide('accepted');
+  else if (k === 'e' || k === 'E') { edit = true; msg('edit mode'); draw(); }
+  else if (k === 'd' || k === 'D') showDefer();
+  else if (k === 'Escape') { sel = -1; hideDefer(); draw(); }
+  else if (k === 'Delete' || k === 'Backspace') {
+    if (sel >= 0 && edit) { toks.splice(sel, 1); sel = -1; draw(); }
+  } else if (k === 'ArrowLeft' || k === 'ArrowRight') {
+    const d = k === 'ArrowLeft' ? -1 : 1;
+    if (sel >= 0 && edit) {
+      /* a selected box takes the arrows: nudge, or resize with shift */
+      const t = toks[sel];
+      if (e.shiftKey) t.box[2] += d; else { t.box[0] += d; t.box[2] += d; }
+      draw();
+    } else {
+      /* manual navigation reaches ANY image, including reviewed ones - that is the undo
+         path. Auto-advance targets the next UNREVIEWED image; these two are distinct. */
+      load(pos + d);
+    }
+  } else if (k === 'ArrowUp' || k === 'ArrowDown') {
+    if (sel < 0 || !edit) return;
+    const d = k === 'ArrowUp' ? -1 : 1, t = toks[sel];
+    if (e.shiftKey) t.box[3] += d; else { t.box[1] += d; t.box[3] += d; }
+    draw();
+  } else return;
+  e.preventDefault();
+};
+
+boot();
+</script>

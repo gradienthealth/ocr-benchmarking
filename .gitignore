@@ -31,10 +31,28 @@ label_studio*/
 # readable. NOTE (see the warning further down): git has no inline comments — every comment
 # here is on its own line.
 ground_truth/seed/
+# Per-stratum seed dirs from diagnostic runs (e.g. ground_truth/seed_ct_scout/) hold the same
+# read-back token text and are the same class of PHI. The trailing slash matches DIRECTORIES
+# only, so the PHI-free ground_truth/seed_summary.json file is not caught by this rule.
+ground_truth/seed_*/
 # `seed_summary.json` is PHI-free (per-image counts only) so Arnav can still open it, but it
 # is regenerable output and a per-image count table is not something to publish — ignore it
 # as a build artifact, not as PHI (Phase 10c / D-10c.8).
 ground_truth/seed_summary.json
+# Phase 10d: ground_truth/review/<image_id>.json holds the human-confirmed token text —
+# that IS the PHI, same class as gt.csv. The existing `ground_truth/*.csv` rule does NOT
+# cover .json, so this rule is required, not redundant. Directory-scoped (trailing slash)
+# so the PHI-free ground_truth/seed_summary.json sibling stays readable. review_* covers a
+# future self-agreement round (ground_truth/review_r2/).
+ground_truth/review/
+ground_truth/review_*/
+
+# Phase 10c / D-10c.2b: the tessdata_best language model Arnav downloads locally and passes
+# via --tessdata-dir. Not PHI — a ~15MB upstream binary blob that does not belong in git.
+# Its identity is already pinned the right way: the seeder records `traineddata_sha256` in
+# every seed's provenance, so the model is committed by hash, not by content.
+tessdata_best/
+*.traineddata
 
 # Bulk data dirs / renders / caches
 data/
@@ -46,6 +64,10 @@ results/
 # inline comments — a trailing `# ...` becomes part of the pattern and the rule silently
 # matches nothing, so every comment here must be on its own line.
 census_tars/
+# scripts/download_series_tars.py destination for the Step 3 series tars (PHI). Covered by
+# *.tar already; the directory rule is here so an unexpected non-.tar file landing in it
+# (a partial download, a gcloud temp file) cannot be committed either.
+series_tars/
 
 # Synthetic test fixtures: ignore generated images, keep the regenerator (D-0.3)
 tests/fixtures/
@@ -73,9 +95,15 @@ manifest.csv
 # identifiers, Limited-Data-Set grade). Same class as manifest.csv — never commit.
 source_paths.txt
 
+# gt_sample_*.csv = a stratified sub-manifest (scripts/build_gt_sample.py). Same
+# columns as manifest.csv, so same class — never commit. Commit the printed
+# sample_sha256 in the plan/run metadata instead, which is what pins the set.
+gt_sample_*.csv
+
 # ---- NOT FOR THE PUBLIC REPO (gradienthealth/ocr-benchmarking) ----
 # Personal working docs: internal planning, decision log, and learning journal.
 plan.md
+next-steps.md
 insights.md
 diff-update.md
 

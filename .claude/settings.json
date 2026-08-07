@@ -46,6 +46,8 @@
       "Read(./**/*render_inputs*)",
       "Read(./**/*raw_response*)",
       "Read(./ground_truth/seed/**)",
+      "Read(./ground_truth/review/**)",
+      "Read(./ground_truth/review_r2/**)",
       "Read(**/.env*)",
       "Read(~/.aws/**)",
       "Read(~/.ssh/**)",
