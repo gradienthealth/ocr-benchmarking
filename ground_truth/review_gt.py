@@ -11,6 +11,10 @@
 then open http://127.0.0.1:8765/ in a browser. `--summary` prints the PHI-free stats instead
 of serving (it needs the same --set/--groups so it can diff against the seed).
 
+WHAT TO ANNOTATE (as opposed to how this file works) lives in ground_truth/ANNOTATION.md —
+PHI vs KEEP, why the label picks the metric denominator, and why the seed's word-level
+tokenization must not be re-cut. That file is PHI-FREE; keep it that way.
+
 CONSUMED INPUT SCHEMA (pinned by 10b/10c; this file reads it, never re-derives it)
 ---------------------------------------------------------------------------------
   <renders_dir>/render_manifest.csv   PHI-FREE. Columns, exactly and in order
@@ -322,7 +326,12 @@ def write_record(image_id: str, payload: dict) -> dict:
         # gone). Without this the two are indistinguishable on reopen and a deleted box
         # resurrects — putting invented text into gt.csv, the dangerous axis. Provenance for
         # the UI; 10e reads `tokens` and ignores this.
-        "deleted_seed_indexes": sorted(
+        # EMPTY ON A DEFER, for exactly the reason `tokens` is: a deferred image is UNDECIDED.
+        # Keeping the deletions would make "come back to this later" destructive — the page
+        # drops these seed indexes from the working set on reopen, so a sweep-delete followed
+        # by a defer would silently retire real seed boxes from an image nobody has ruled on,
+        # with no way back in the UI. Re-opening a deferred image re-reads the whole seed.
+        "deleted_seed_indexes": [] if state == "deferred" else sorted(
             {int(i) for i in (payload.get("deleted_seed_indexes") or []) if int(i) >= 0}
         ),
     }
@@ -482,6 +491,7 @@ def _pc(n: int, total: int) -> str:
 def _blank_stats() -> dict:
     return {"total": 0, "accepted": 0, "edited": 0, "deferred": 0, "unreviewed": 0,
             "unchanged": 0, "text_fixed": 0, "box_fixed": 0, "deleted": 0, "added": 0,
+            "phi": 0, "keep": 0,
             "hidden": 0, "non_default_gate": 0, "w": [], "h": [], "hrel": [],
             "defers": dict.fromkeys(DEFER_REASONS, 0)}
 
@@ -519,6 +529,13 @@ def collect(images: dict[str, dict]) -> dict[str, dict]:
             st["deleted"] += len(shown - kept)
             st["added"] += sum(1 for t in rec["tokens"] if t.get("seed_index") is None)
             for tok in rec["tokens"]:
+                # The recorded label DISTRIBUTION, not a diff against the seed's label. The
+                # seed's is a hardcoded "PHI" placeholder (D-10c.2) and the page defaults
+                # every token to KEEP, so a seed-vs-record label diff would read ~100% on
+                # every stratum and mean nothing. These two counts do mean something: `keep`
+                # is the denominator for false-redaction and exact-match (metrics.py:99-121),
+                # so a stratum whose `keep` is 0 contributes nothing to the engine ranking.
+                st["keep" if tok["label"] == "KEEP" else "phi"] += 1
                 w, h = tok["box"][2] - tok["box"][0], tok["box"][3] - tok["box"][1]
                 st["w"].append(w)
                 st["h"].append(h)
@@ -561,6 +578,12 @@ def print_summary(images: dict[str, dict]) -> None:
                   f"text-fixed {s['text_fixed']} ({_pc(s['text_fixed'], tot)})  "
                   f"box-fixed {s['box_fixed']} ({_pc(s['box_fixed'], tot)})  "
                   f"deleted {s['deleted']} ({_pc(s['deleted'], tot)})  added {s['added']}")
+        if s["phi"] or s["keep"]:
+            # KEEP is the false-redaction / exact-match denominator, so `keep 0` on a stratum
+            # means it contributes nothing to the ranking — worth seeing per stratum, loudly.
+            print(f"  labels     KEEP {s['keep']}  PHI {s['phi']}"
+                  + ("   <-- no KEEP tokens: this stratum cannot score reading quality"
+                     if not s["keep"] else ""))
         if s["w"]:
             # The measurement that settles whether iou_thr = 0.5 is right (EasyOCR's boxes
             # measured ~1.9x taller than the text they bound). Produce the number here;

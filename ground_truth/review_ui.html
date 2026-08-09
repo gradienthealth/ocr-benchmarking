@@ -20,8 +20,29 @@
   .panes { display: flex; gap: 10px; padding: 10px; align-items: flex-start; }
   canvas { background: #000; max-width: 100%; }
   .col { flex: 1; min-width: 0; }
+  /* The working canvas may be sized PAST the pane (- / = zoom it), so it needs its own
+     scroller and must escape the global `max-width: 100%` — otherwise CSS would shrink the
+     element back to the column width and the zoom would do nothing visible. At zoom 1 the
+     canvas is fitted to the viewport by drawCanvas(), so no scrollbar appears and the
+     default layout is byte-for-byte what it was. */
+  #ovlscroll { overflow: auto; max-height: calc(100vh - 120px); }
+  #ovlscroll canvas { max-width: none; }
   .lbl { color: #8a94a6; font-size: 11px; text-transform: uppercase; }
   #side { width: 300px; max-height: 78vh; overflow: auto; }
+  /* The working image gets the whole pane; the untouched original starts at the bottom-right
+     of that pane instead of sitting beside it, so neither is squeezed to half width. It is
+     ALWAYS ON SCREEN, NEVER COLLAPSIBLE — an overlay hides the pixels underneath it, which is
+     exactly where a missed or mis-bounded token lives, so the unmarked image has to stay
+     visible. It can be moved (drag it) and resized (`,`/`.`, `O`); there is deliberately no
+     "hide" step anywhere in that. */
+  /* Grab it anywhere to move it (see the drag handler): the panel has no other mouse
+     behaviour, so there is nothing for a stray press to hit and nothing it can destroy.
+     `user-select: none` stops a drag turning into a text selection of the label. */
+  #origwrap { position: fixed; right: 316px; bottom: 8px; z-index: 5;
+              background: #1d2026; border: 1px solid #3a3f4a; padding: 3px 4px 4px;
+              cursor: grab; user-select: none; }
+  #origwrap.grabbing { cursor: grabbing; border-color: #f5a623; }
+  #origwrap canvas { display: block; }
   .tok { display: flex; gap: 4px; margin-bottom: 3px; align-items: center; }
   .tok input[type=text] { flex: 1; min-width: 0; background: #23262d; color: #e6e6e6;
                           border: 1px solid #3a3f4a; padding: 2px 4px; }
@@ -31,6 +52,9 @@
   .badge { padding: 2px 8px; border-radius: 3px; background: #3a3f4a; }
   .accepted { background: #245c2c; } .edited { background: #6b4a12; }
   .deferred { background: #6b1f1f; } .unreviewed { background: #3a3f4a; }
+  /* The mode badge is loud on purpose: the SAME drag draws a box in one mode and destroys
+     boxes in the other, so "which mode am I in" must never be a guess. */
+  .m-draw { background: #1d4ed8; } .m-delete { background: #b91c1c; }
   footer { padding: 6px 12px; color: #8a94a6; }
   #defer { display: none; padding: 8px 12px; background: #2a1d1d; }
 </style>
@@ -39,6 +63,7 @@
   <b id="iid">-</b>
   <span class="lbl" id="stratum"></span>
   <span class="badge unreviewed" id="state">unreviewed</span>
+  <span class="badge m-draw" id="mode">DRAW</span>
   <span>conf &ge; <b id="gateval">0</b>
     <input type="range" id="gate" min="0" max="100" step="1" value="0">
     <span class="lbl" id="gatedef"></span></span>
@@ -65,21 +90,238 @@
 </div>
 
 <div class="panes">
-  <!-- BOTH panes are required and neither is collapsible: an overlay hides the pixels
-       underneath it, which is exactly where a missed or mis-bounded token lives. -->
-  <div class="col"><div class="lbl">original</div><canvas id="raw"></canvas></div>
-  <div class="col"><div class="lbl">seed boxes</div><canvas id="ovl"></canvas></div>
+  <!-- BOTH images are required and neither is collapsible: an overlay hides the pixels
+       underneath it, which is exactly where a missed or mis-bounded token lives. They are
+       stacked (working image large, original pinned bottom-right) rather than side by side so
+       neither is capped at half the window width. -->
+  <div class="col"><div class="lbl">working &mdash; seed boxes (&minus; / = resize)</div>
+    <div id="ovlscroll"><canvas id="ovl"></canvas></div></div>
   <div id="side"><div class="lbl">tokens (shown = kept)</div><div id="toks"></div></div>
 </div>
 
+<div id="origwrap">
+  <div class="lbl">original &mdash; unmarked (drag to move, &#44; / . resize, O steps)</div>
+  <canvas id="raw"></canvas>
+</div>
+
 <footer id="help">
-  A accept &middot; E edit mode &middot; D defer &middot; &larr;/&rarr; prev/next image
-  (nudge selected box when one is selected; shift+arrow resizes) &middot;
-  Del delete box &middot; Esc deselect &middot; drag on the right pane to draw
+  <!-- Collapsed by default: five lines of help at the bottom of every screen is five lines the
+       image does not get, and the image is the thing being looked at for 199 frames. The mode
+       badge lives in the header, so the one thing that must never be guessed is always up. -->
+  <span id="helpshort"><b>?</b> keys &middot; <b>E</b> draw &middot; <b>D</b> delete &middot;
+    <b>&minus;/=</b> resize working &middot; <b>&#44;/.</b> resize original &middot;
+    <b>A</b> save+next &middot; <b>F</b> defer &middot; <b>Ctrl+Z</b> undo</span>
+<div id="helpfull" hidden>
+  <b>mode</b> (sticky, shown in the header):
+  <b>E</b> = DRAW &mdash; drag outlines a new box &middot;
+  <b>D</b> = DELETE &mdash; click a box removes it, drag removes every box the sweep covers
+  <br>
+  <b>decide:</b> A accept/save (auto-advance) &middot; Ctrl+S save &amp; stay &middot;
+  F defer &middot; &larr;/&rarr; prev/next image
+  <br>
+  <b>box:</b> Tab / shift+Tab select next/prev &middot; Enter type in it &middot;
+  L toggle PHI/KEEP &middot; &larr;&uarr;&darr;&rarr; nudge (shift resizes) &middot;
+  Del delete selected &middot; Ctrl+C / Ctrl+V copy/paste &middot; Esc deselect
+  <br>
+  <b>labels:</b> every box defaults to <b>KEEP</b> &middot; P = all visible &rarr; PHI &middot;
+  K = all visible &rarr; KEEP &middot; rules: <b>ground_truth/ANNOTATION.md</b>
+  <br>
+  <b>undo:</b> Ctrl+Z &middot; redo Ctrl+Shift+Z or Ctrl+Y &middot; per image, cleared when you
+  leave it &middot; <b>gate:</b> [ / ] by 5
+  <br>
+  <b>layout</b> (view only, never touches a token, kept as you move between images):
+  <b>&minus;</b> / <b>=</b> shrink/grow the working image &mdash; past 100% its pane scrolls
+  &middot; <b>&#44;</b> / <b>.</b> shrink/grow the pinned original &middot;
+  <b>O</b> steps the original's preset size &middot; <b>drag the original</b> anywhere to move
+  it &middot; <b>0</b> resets both panes' size and the original's position
+  &middot; the original never hides &mdash; it is the only unmarked view of the pixels
+</div>
 </footer>
 
 <script>
-let index = [], pos = 0, cur = null, toks = [], sel = -1, gate = 0, edit = false, scale = 1;
+/* TWO MODES, and the left mouse button means opposite things in them (Arnav's design,
+   2026-08-07):
+     'draw'   (E) - drag outlines a new box. A click does nothing. Nothing here destroys.
+     'delete' (D) - click a box to remove it; drag removes every box the sweep covers.
+   No modifier keys: the mode is the modifier. `mode` is STICKY across images - re-arming it
+   on every one of 199 images would cost a keypress each time - and starts on 'draw' because
+   that is the half that cannot destroy anything.
+   Token text, labels and the x buttons are editable in BOTH modes; the mode only decides what
+   the left button does on the canvas. */
+let index = [], pos = 0, cur = null, toks = [], sel = -1, gate = 0, mode = 'draw', scale = 1;
+/* the in-flight mouse gesture, in IMAGE pixels: {mode:'draw'|'delete', sx, sy, x, y} or null */
+let drag = null;
+/* index into `toks` whose text field should take focus on the next drawList, or -1 */
+let focusTok = -1;
+
+/* Size of the pinned original, as a fraction of the window width. `O` cycles it. There is no
+   0 in this list on purpose - the unmarked image is the only view of the pixels the boxes are
+   covering, so it can be made small but never dismissed. */
+const ORIG_FRAC = [0.18, 0.30, 0.45];
+let origSize = 1;
+
+/* --- free resize of the two panes ------------------------------------------------------
+   BOTH zooms are MULTIPLIERS ON TOP of the existing fit calculation, and both start at 1.0,
+   so the default layout is exactly what it was before this existed - the fit logic below is
+   untouched. `-`/`=` size the working image, `,`/`.` the pinned original, `0` resets both.
+   They are separate numbers on purpose: the reason to resize is that the pinned original
+   OVERLAPS the working image, and one shared control cannot open a gap between them.
+
+   The step is multiplicative so the same keypress feels the same at every size, and the
+   range is clamped: below MIN_ZOOM the boxes are too small to judge, above MAX_ZOOM a
+   3000px mg_2d frame allocates a canvas big enough to be refused by the browser. `O` is
+   kept as the coarse preset step (muscle memory, and one key for a big jump); `,`/`.` is
+   the fine control on top of whichever preset is active. */
+const ZOOM_STEP = 1.15, MIN_ZOOM = 0.3, MAX_ZOOM = 4;
+/* No canvas dimension may exceed this. Chrome refuses a canvas past ~16384px on a side and
+   silently renders NOTHING - a blank working pane over a frame that has boxes on it is the
+   worst possible failure here, so the scale is capped before it can happen. */
+const MAX_CANVAS_PX = 8000;
+let workZoom = 1, origZoom = 1;
+
+function clampZoom(z) { return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z)); }
+
+/* Cap a scale so neither canvas dimension passes MAX_CANVAS_PX. */
+function capScale(s) { return Math.min(s, MAX_CANVAS_PX / cur.w, MAX_CANVAS_PX / cur.h); }
+
+function zoomWork(f) {
+  if (!cur) return;  /* a keypress before the first image lands has nothing to size */
+  workZoom = clampZoom(f === 0 ? 1 : workZoom * f);
+  drawCanvas();
+  msg('working image at ' + Math.round(workZoom * 100) + '% of fit' +
+      (workZoom > 1 ? '  (scroll the pane; - shrinks, 0 resets)' : '  (= grows, 0 resets)'));
+}
+
+function zoomOrig(f) {
+  if (!cur) return;
+  origZoom = clampZoom(f === 0 ? 1 : origZoom * f);
+  drawCanvas();
+  msg('original at ' + Math.round(origZoom * 100) + '% of its O preset' +
+      '  (O steps the preset, 0 resets both)');
+}
+
+/* --- dragging the pinned original ------------------------------------------------------
+   Grab the panel anywhere and move it. Resizing alone cannot always clear the overlap - the
+   token under the panel may be in the corner the panel is pinned to - so the panel has to be
+   movable as well as sizable.
+
+   It stays anchored by its right/bottom offsets rather than switching to left/top, so that
+   growing it with `,`/`.` keeps expanding up and left away from its own corner instead of
+   pushing its far edge off screen. Position survives moving between images, like the zooms:
+   re-parking it on all 199 frames is exactly the cost this is meant to remove.
+
+   NOT undoable and never part of a record - this moves a viewport, not a box. */
+const ORIG_HOME = { right: 316, bottom: 8 };
+let origPos = { right: ORIG_HOME.right, bottom: ORIG_HOME.bottom };
+/* the in-flight panel drag, in CLIENT px: {x, y, right, bottom} or null. Deliberately a
+   different variable from `drag` (the canvas box gesture) - one gesture must never be able
+   to be mistaken for the other, because one of them deletes boxes. */
+let panDrag = null;
+const origwrap = document.getElementById('origwrap');
+
+/* Keep the whole panel inside the viewport. Called after every move AND after every resize,
+   because growing a panel parked at an edge would otherwise push its far side out of reach -
+   and the pixels underneath a panel you cannot grab are pixels you cannot check. */
+function clampOrigPos() {
+  const maxR = Math.max(0, window.innerWidth - origwrap.offsetWidth);
+  const maxB = Math.max(0, window.innerHeight - origwrap.offsetHeight);
+  origPos.right = Math.min(maxR, Math.max(0, origPos.right));
+  origPos.bottom = Math.min(maxB, Math.max(0, origPos.bottom));
+  origwrap.style.right = origPos.right + 'px';
+  origwrap.style.bottom = origPos.bottom + 'px';
+}
+
+function endPan() {
+  panDrag = null;
+  origwrap.className = '';
+}
+
+origwrap.onmousedown = e => {
+  if (e.button !== 0) return;
+  /* same reason as the canvas: preventDefault cancels the focus change, and a token field
+     left holding the caret swallows every single-key shortcut afterwards */
+  if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+  e.preventDefault();
+  panDrag = { x: e.clientX, y: e.clientY, right: origPos.right, bottom: origPos.bottom };
+  origwrap.className = 'grabbing';
+};
+
+/* addEventListener, NOT window.onmousemove = : the canvas gesture already owns that property
+   and assigning over it would silently disable drawing and deleting. Both handlers run; the
+   canvas one returns immediately because `drag` is null for a gesture that started here. */
+window.addEventListener('mousemove', e => {
+  if (!panDrag) return;
+  /* button released off-page - stop tracking rather than have the panel follow a mouse that
+     is no longer holding it */
+  if (e.buttons === 0) { endPan(); return; }
+  /* right/bottom offsets grow the opposite way to the cursor */
+  origPos.right = panDrag.right - (e.clientX - panDrag.x);
+  origPos.bottom = panDrag.bottom - (e.clientY - panDrag.y);
+  clampOrigPos();
+});
+
+window.addEventListener('mouseup', () => { if (panDrag) endPan(); });
+
+/* --- undo / redo ---------------------------------------------------------------------
+   Whole-`toks` snapshots rather than an inverse-operation log: the working set is a few
+   hundred small objects, the page redraws it in full anyway, and a snapshot cannot get an
+   inverse wrong. Undo is what makes a destructive plain-click delete safe to hand a human.
+
+   Everything here is IN-MEMORY and per-image (both stacks are cleared by load()). Undo does
+   NOT reach back through a save: once A has written the record, the way back is to arrow to
+   the image and decide again, which fully rewrites it. */
+let undoStack = [], redoStack = [], undoTag = null;
+const UNDO_LIMIT = 200;
+
+function snapshot() {
+  /* box is copied, not shared - an arrow-key nudge mutates the array in place, which would
+     otherwise silently rewrite the snapshot that is supposed to undo it. */
+  return toks.map(t => ({ ...t, box: t.box.slice() }));
+}
+
+/* `tag` coalesces a run of the same fine-grained action into ONE undo step: holding an arrow
+   key or typing a word should not cost fifty Ctrl+Z presses to walk back, and at 200 entries
+   an auto-repeating arrow would otherwise evict every earlier step. A null tag never
+   coalesces. */
+function pushUndo(tag) {
+  if (tag != null && tag === undoTag) return;
+  undoTag = tag == null ? null : tag;
+  undoStack.push(snapshot());
+  if (undoStack.length > UNDO_LIMIT) undoStack.shift();
+  redoStack.length = 0;
+}
+
+function undo() {
+  if (!undoStack.length) { msg('nothing to undo on this image'); return; }
+  redoStack.push(snapshot());
+  toks = undoStack.pop();
+  /* `sel` indexes `toks`, and the restored array may be a different length - a stale index
+     would highlight and nudge the wrong box. */
+  sel = -1; undoTag = null;
+  draw();
+  msg('undo  (' + undoStack.length + ' more available, Ctrl+Shift+Z redoes)');
+}
+
+function redo() {
+  if (!redoStack.length) { msg('nothing to redo'); return; }
+  undoStack.push(snapshot());
+  toks = redoStack.pop();
+  sel = -1; undoTag = null;
+  draw();
+  msg('redo  (' + redoStack.length + ' more available)');
+}
+
+/* --- copy / paste a box ---------------------------------------------------------------
+   PAGE-LOCAL ON PURPOSE: Ctrl+C never touches the system clipboard. Token text on the OS
+   clipboard is the same class of leak this file already blocks for spellcheck and autofill -
+   a signed-in Brave or Chrome profile can sync the clipboard to other devices, and that is
+   egress the "no outbound fetch" guarantee does not cover. This buffer is a JS variable that
+   dies with the tab.
+
+   It is also cleared by load(), so a box cannot be pasted from one image into another.
+   Carrying image A's token text into image B's record would put text into gt.csv that was
+   never on those pixels - invented text, the dangerous axis, and unrecoverable once frozen. */
+let clip = null;
 const img = new Image();
 const raw = document.getElementById('raw'), ovl = document.getElementById('ovl');
 
@@ -100,14 +342,32 @@ function visible(t, g) {
 }
 
 async function boot() {
+  /* paints the badge and the canvas cursor from `mode` rather than trusting the markup to
+     already agree with it */
+  setMode(mode);
   index = await (await fetch('/api/index')).json();
   index.sort((a, b) => a.image_id < b.image_id ? -1 : 1);
   await load(0);
 }
 
+/* Every token starts KEEP, INCLUDING the seed's (Arnav's call, 2026-08-07).
+   The seed's own label is not information: seed_tesseract.py hardcodes "PHI" on every token
+   because Tesseract cannot know (D-10c.2). So the page is choosing a default either way, and
+   the two defaults fail in opposite directions:
+     default PHI  - an unreviewed token silently leaves the KEEP denominator, and KEEP is the
+                    entire denominator for false-redaction and exact-match (metrics.py:99-121).
+                    A frame left untouched contributes NOTHING to the ranking.
+     default KEEP - an unreviewed token silently enters that denominator.
+   KEEP is the better default because most burned-in text really is KEEP (measurements,
+   laterality, technical settings), so it minimises the flips, and because a token that is
+   present but mislabelled is visible in the PHI/KEEP counts on --summary, whereas one that
+   quietly vanished from a denominator is not.
+   THIS IS STILL A DEFAULT, NOT A DECISION. Set the label on every token you look at. */
+const DEFAULT_LABEL = 'KEEP';
+
 function seedTokens() {
   return cur.seed_tokens.map((t, k) => ({
-    text: t.text, box: t.bbox.slice(), label: t.label,
+    text: t.text, box: t.bbox.slice(), label: DEFAULT_LABEL,
     confidence: t.confidence, seed_index: k
   }));
 }
@@ -144,7 +404,12 @@ async function load(i) {
      of order, leaving `cur` on one image while `pos` points at another - after which a
      decision writes the wrong record. Only the newest load is allowed to install its result. */
   const mine = ++loadSeq;
-  pos = i; sel = -1; edit = false; hideDefer();
+  /* `mode` is deliberately NOT reset here - it is sticky across images (see its declaration) */
+  pos = i; sel = -1; hideDefer();
+  /* per-image and in-memory: history from the previous image must not be replayable onto
+     this one, and `clip` must not carry another image's token text across (see above).
+     `drag` is disarmed too - an in-flight gesture belongs to the image it started on. */
+  undoStack = []; redoStack = []; undoTag = null; clip = null; focusTok = -1; drag = null;
   const data = await (await fetch('/api/image/' + index[i].image_id)).json();
   if (mine !== loadSeq) return;
   cur = data;
@@ -154,13 +419,7 @@ async function load(i) {
   document.getElementById('iid').textContent = cur.image_id;
   document.getElementById('stratum').textContent = cur.stratum;
   document.getElementById('gatedef').textContent = '(stratum default c' + cur.default_gate + ')';
-  const st = index[i].state;
-  document.getElementById('state').className = 'badge ' + st;
-  document.getElementById('state').textContent = st;
-  const n = s => index.filter(x => x.state === s).length;
-  document.getElementById('counts').textContent =
-    n('accepted') + ' accepted, ' + n('edited') + ' edited, ' + n('deferred') + ' deferred, ' +
-    n('unreviewed') + ' left';
+  refreshHeader();
   msg('');
   img.src = '/api/png/' + cur.image_id;
   await img.decode().catch(() => {});
@@ -170,79 +429,324 @@ async function load(i) {
 
 function draw() { drawCanvas(); drawList(); }
 
+/* Badge + canvas cursor for the current mode. Called on every mode change AND on load, so
+   the indicator can never lag the behaviour. The cursor is part of the signal: crosshair
+   means "you are about to draw", and it is visible where the eyes already are. */
+function setMode(next) {
+  mode = next;
+  const el = document.getElementById('mode');
+  el.className = 'badge m-' + mode;
+  el.textContent = mode.toUpperCase();
+  ovl.style.cursor = mode === 'draw' ? 'crosshair' : 'pointer';
+}
+
+/* Badge + progress counters, from `index` rather than from `cur`. Factored out of load()
+   because Ctrl+S saves WITHOUT advancing, so it has to refresh these in place - otherwise a
+   save-and-stay leaves the badge reading "unreviewed" over a record that is already on disk,
+   which is exactly the "did that save?" doubt the confirmation message exists to remove. */
+function refreshHeader() {
+  const st = (index[pos] || {}).state || 'unreviewed';
+  document.getElementById('state').className = 'badge ' + st;
+  document.getElementById('state').textContent = st;
+  const n = s => index.filter(x => x.state === s).length;
+  document.getElementById('counts').textContent =
+    n('accepted') + ' accepted, ' + n('edited') + ' edited, ' + n('deferred') + ' deferred, ' +
+    n('unreviewed') + ' left';
+}
+
 function drawCanvas() {
   document.getElementById('gate').value = gate;
   document.getElementById('gateval').textContent = gate;
-  const maxw = Math.max(280, Math.floor((window.innerWidth - 360) / 2) - 20);
-  scale = Math.min(1, maxw / cur.w);
-  for (const c of [raw, ovl]) {
-    c.width = Math.round(cur.w * scale); c.height = Math.round(cur.h * scale);
-    const g = c.getContext('2d');
-    g.imageSmoothingEnabled = false;
-    g.drawImage(img, 0, 0, c.width, c.height);
-  }
+  /* WORKING IMAGE: the whole pane, not half of it. It is also capped by viewport HEIGHT, so
+     the frame fits on screen without scrolling - hunting for a token by scrolling is what the
+     side-by-side layout made unavoidable, and it is the tiring part. 316 = the token list plus
+     gaps; 150 = header + labels + the one-line footer. */
+  const availW = Math.max(320, window.innerWidth - 340);
+  const availH = Math.max(240, window.innerHeight - 150);
+  /* fit first, then the reviewer's multiplier: at workZoom 1 this is the old expression
+     exactly. Past 1 the canvas is deliberately bigger than the pane and #ovlscroll scrolls
+     it - `scale` stays the single source of truth for box geometry either way, and
+     ovlPoint() maps the cursor through the RENDERED rect, so hit-testing follows the zoom
+     with nothing further to keep in sync. */
+  scale = capScale(Math.min(1, availW / cur.w, availH / cur.h) * workZoom);
+  ovl.width = Math.round(cur.w * scale);
+  ovl.height = Math.round(cur.h * scale);
   const g = ovl.getContext('2d');
-  g.lineWidth = 1; g.font = '11px monospace';
+  g.imageSmoothingEnabled = false;
+  g.drawImage(img, 0, 0, ovl.width, ovl.height);
+
+  /* ORIGINAL: pinned bottom-right at its own independent scale. Never hidden (see #origwrap):
+     it is the only view of the pixels the boxes are covering. */
+  const ow = Math.max(140, Math.round(window.innerWidth * ORIG_FRAC[origSize]));
+  /* The zoom applies on top of the O preset, then a HARD viewport clamp that the zoom cannot
+     escape: #origwrap is pinned bottom-right, so an oversized original grows up and left off
+     the top of the screen, where the part that runs off cannot be scrolled back into view. */
+  const os = capScale(Math.min(
+    Math.min(1, ow / cur.w, (window.innerHeight - 120) / cur.h) * origZoom,
+    (window.innerWidth - 24) / cur.w, (window.innerHeight - 60) / cur.h));
+  raw.width = Math.round(cur.w * os);
+  raw.height = Math.round(cur.h * os);
+  const rg = raw.getContext('2d');
+  rg.imageSmoothingEnabled = false;
+  rg.drawImage(img, 0, 0, raw.width, raw.height);
+  /* the panel just changed size, and it may be parked anywhere the reviewer dragged it */
+  clampOrigPos();
+
+  g.font = '11px monospace';
+  /* What an in-flight delete gesture would remove, drawn red BEFORE the button comes up.
+     It comes from the same deleteTargets() that mouseup splices with, so the preview cannot
+     promise one set and take another - a box that vanishes without having been highlighted is
+     how real text leaves gt.csv unnoticed. */
+  const doomed = new Set(deleteTargets());
   toks.forEach((t, i) => {
     if (!visible(t)) return;
     const [x0, y0, x1, y1] = t.box.map(v => v * scale);
-    g.strokeStyle = i === sel ? '#f5a623' : (t.label === 'PHI' ? '#39d353' : '#4aa3ff');
+    g.lineWidth = doomed.has(i) ? 2 : 1;
+    g.strokeStyle = doomed.has(i) ? '#ff4d4d'
+      : (i === sel ? '#f5a623' : (t.label === 'PHI' ? '#39d353' : '#4aa3ff'));
     g.strokeRect(x0, y0, x1 - x0, y1 - y0);
     g.fillStyle = g.strokeStyle;
     g.fillText(t.text, x0, y0 > 10 ? y0 - 2 : y1 + 10);
   });
+  if (drag && !isClick()) {
+    /* the rubber band: amber while drawing, red while sweeping to delete */
+    const [x0, y0, x1, y1] = dragRect().map(v => v * scale);
+    g.lineWidth = 1;
+    g.setLineDash([4, 3]);
+    g.strokeStyle = drag.mode === 'draw' ? '#f5a623' : '#ff4d4d';
+    g.strokeRect(x0, y0, x1 - x0, y1 - y0);
+    g.setLineDash([]);
+  }
+}
+
+/* Rows currently in the DOM, keyed by token index. Kept so the selection highlight can be
+   repainted WITHOUT rebuilding the list - see markSel. */
+let rowEls = new Map();
+
+/* Repaint the selection highlight in place.
+   drawList() starts with `box.textContent = ''`, which DETACHES every row - including one
+   that currently holds the caret. Focusing an input fires `focus` synchronously, so an
+   onfocus handler that called the full draw() destroyed the very element it had just
+   focused: the caret fell back to <body>, the reviewer's keystrokes went to
+   document.onkeydown instead of the field, and 'A' or 'D' fired a decision mid-typing.
+   Anything that only changes WHICH row is selected must therefore use this, never draw(). */
+function markSel() {
+  rowEls.forEach((row, i) => { row.className = 'tok' + (i === sel ? ' sel' : ''); });
 }
 
 function drawList() {
   const box = document.getElementById('toks');
   box.textContent = '';
+  const fields = new Map();
+  rowEls = new Map();
   toks.forEach((t, i) => {
     if (!visible(t)) return;
     const row = document.createElement('div');
     row.className = 'tok' + (i === sel ? ' sel' : '');
     const inp = document.createElement('input');
-    inp.type = 'text'; inp.value = t.text; inp.disabled = !edit;
+    inp.type = 'text'; inp.value = t.text;
     /* see the note field: browser spellcheck/autofill is an egress path that is not a fetch */
     inp.spellcheck = false;
     inp.autocomplete = 'off';
     inp.setAttribute('autocapitalize', 'off');
     inp.setAttribute('autocorrect', 'off');
-    inp.oninput = () => { t.text = inp.value; drawCanvas(); };
-    inp.onfocus = () => { sel = i; draw(); };
+    /* tagged so a whole typed token collapses into ONE undo step, not one per keystroke */
+    inp.oninput = () => { pushUndo('text' + i); t.text = inp.value; drawCanvas(); };
+    /* markSel + drawCanvas, NEVER draw(): a rebuild here would detach this very input and
+       throw the caret away the instant it arrives (see markSel). */
+    inp.onfocus = () => { sel = i; drawCanvas(); markSel(); };
     const lab = document.createElement('button');
-    lab.textContent = t.label; lab.disabled = !edit;
-    lab.onclick = () => { t.label = t.label === 'PHI' ? 'KEEP' : 'PHI'; draw(); };
+    lab.textContent = t.label;
+    lab.onclick = () => {
+      pushUndo();
+      t.label = t.label === 'PHI' ? 'KEEP' : 'PHI'; draw();
+    };
     const del = document.createElement('button');
-    del.textContent = 'x'; del.disabled = !edit;
-    del.onclick = () => { toks.splice(i, 1); sel = -1; draw(); };
+    del.textContent = 'x';
+    del.onclick = () => { pushUndo(); toks.splice(i, 1); sel = -1; draw(); };
     row.append(inp, lab, del);
     box.append(row);
+    fields.set(i, inp);
+    rowEls.set(i, row);
   });
+  if (focusTok >= 0) {
+    /* Keyed by TOKEN INDEX, not "the last row": a box drawn by hand starts with no text and
+       the server refuses an empty token outright, so the cursor has to land in that box's
+       field specifically. Without it the reviewer draws, presses A, and gets "a box has no
+       text" with nothing focused to type into. Enter reuses the same path for the selected
+       box. Cleared here so a later redraw cannot steal focus back. */
+    const want = focusTok;
+    focusTok = -1;
+    if (fields.has(want)) fields.get(want).focus();
+  }
 }
 
-/* --- drawing / selecting on the overlay pane --- */
-let dragStart = null;
-ovl.onmousedown = e => {
-  if (!edit) return;
+/* --- drawing / deleting on the overlay pane -----------------------------------------
+   ONE gesture, and the mode decides what it means. No modifier keys.
+     DRAW mode (E)   - drag outlines a new box. A click is too small to be a box and is
+                       reported rather than silently ignored.
+     DELETE mode (D) - click removes the box under the cursor; drag removes every visible
+                       box the swept rectangle covers.
+
+   There is no third "safe" mode because draw mode already is one: nothing it does can
+   destroy a box, and anything it creates is visible and undoable.
+
+   Selection is NOT a mouse gesture - in delete mode a click on a box removes it, so the
+   click cannot also mean "select". Tab / shift+Tab cycle the selection, or click the token's
+   text field in the right-hand pane; either arms the arrow-key nudge/resize. Esc deselects. */
+
+/* Cursor -> IMAGE pixels, mapped through the canvas's RENDERED size rather than the drawing
+   `scale`. They are not the same number: `canvas { max-width: 100% }` shrinks the element
+   below its `canvas.width` whenever the column is narrower than drawCanvas's 280px floor, and
+   nothing recomputes `scale` when the window is resized after a draw. Using `scale` put the
+   cursor up to ~18% off at narrow widths, so a click deleted a different box than the one
+   under the pointer. The rendered rect is true by construction. */
+function ovlPoint(e) {
   const r = ovl.getBoundingClientRect();
-  dragStart = [(e.clientX - r.left) / scale, (e.clientY - r.top) / scale];
-};
-ovl.onmouseup = e => {
-  if (!edit || !dragStart) return;
-  const r = ovl.getBoundingClientRect();
-  const x = (e.clientX - r.left) / scale, y = (e.clientY - r.top) / scale;
-  const [sx, sy] = dragStart; dragStart = null;
-  if (Math.abs(x - sx) < 3 && Math.abs(y - sy) < 3) {
-    sel = toks.findIndex((t, i) => visible(t) &&
-      x >= t.box[0] && x <= t.box[2] && y >= t.box[1] && y <= t.box[3]);
-  } else {
-    /* a hand-drawn box: confidence null so no gate can ever hide it, seed_index null so
-       --summary counts it as "added by hand" rather than a kept seed box. */
-    toks.push({
-      text: '', box: [Math.min(sx, x), Math.min(sy, y), Math.max(sx, x), Math.max(sy, y)],
-      label: 'PHI', confidence: null, seed_index: null
+  return [(e.clientX - r.left) * (r.width ? cur.w / r.width : 1),
+          (e.clientY - r.top) * (r.height ? cur.h / r.height : 1)];
+}
+
+/* The drag's rectangle: normalised so x0<=x1 and y0<=y1 whichever way it was dragged, and
+   CLAMPED to the image. Clamping is required because mouseup is bound to `window` (so a
+   sweep that leaves the canvas still completes) - without it a box released past the edge
+   stores negative or over-width coordinates, write_record() bounds-checks nothing, and the
+   resulting gt.csv row can never reach IoU >= 0.5 against any engine box, scoring as a miss
+   for every engine while skewing the geometry percentiles. */
+function dragRect() {
+  const cx = v => Math.min(cur.w, Math.max(0, v));
+  const cy = v => Math.min(cur.h, Math.max(0, v));
+  return [cx(Math.min(drag.sx, drag.x)), cy(Math.min(drag.sy, drag.y)),
+          cx(Math.max(drag.sx, drag.x)), cy(Math.max(drag.sy, drag.y))];
+}
+
+/* Keep a box inside the image. Same argument as dragRect's clamp, for the arrow-key path. */
+function clampBox(b) {
+  return [Math.min(cur.w, Math.max(0, b[0])), Math.min(cur.h, Math.max(0, b[1])),
+          Math.min(cur.w, Math.max(0, b[2])), Math.min(cur.h, Math.max(0, b[3]))];
+}
+
+/* A gesture under 3 SCREEN pixels in both axes is a click, not a drag.
+   Screen pixels, not image pixels: ovlPoint() has already divided by the render scale, and a
+   3000px-wide mg_2d frame renders at scale ~0.2, so an image-pixel threshold of 3 was really
+   15 screen pixels there. Ordinary click-to-delete then took the sweep branch and removed
+   every box overlapping the twitch - the word box, its enclosing Tesseract line box, and any
+   touching neighbour - which silently drops real tokens from gt.csv. */
+function isClick() {
+  return Math.abs(drag.cx - drag.csx) < 3 && Math.abs(drag.cy - drag.csy) < 3;
+}
+
+/* Indexes into `toks` that the CURRENT delete gesture would remove. One function, used by
+   both the red preview and the mouseup splice - see drawCanvas. */
+function deleteTargets() {
+  if (!drag || drag.mode !== 'delete') return [];
+  const hit = [];
+  if (isClick()) {
+    /* smallest containing box wins, not the first in seed order: Tesseract boxes overlap
+       (a word box sitting inside a line box) and "first" would delete an arbitrary one of
+       them, which reads as "the click deleted the wrong thing". */
+    let best = -1, area = Infinity;
+    toks.forEach((t, i) => {
+      if (!visible(t)) return;
+      if (drag.x < t.box[0] || drag.x > t.box[2] ||
+          drag.y < t.box[1] || drag.y > t.box[3]) return;
+      const a = (t.box[2] - t.box[0]) * (t.box[3] - t.box[1]);
+      if (a < area) { area = a; best = i; }
     });
-    sel = toks.length - 1;
+    if (best >= 0) hit.push(best);
+  } else {
+    const [x0, y0, x1, y1] = dragRect();
+    toks.forEach((t, i) => {
+      /* ANY overlap, not containment: dragging a thin line through a row of boxes has to
+         take the whole row, which is the entire point of the gesture. */
+      if (visible(t) && t.box[0] <= x1 && t.box[2] >= x0 &&
+          t.box[1] <= y1 && t.box[3] >= y0) hit.push(i);
+    });
+  }
+  return hit;
+}
+
+ovl.onmousedown = e => {
+  if (e.button !== 0) return;
+  /* preventDefault below also cancels the default focus change, which would leave a token
+     field or the defer note still holding the caret while the reviewer works on the image -
+     and then every single-key shortcut gets typed INTO that field instead of firing, because
+     document.onkeydown returns early for INPUT targets. Drop focus explicitly first. */
+  if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+  /* stop the browser starting its own text/image selection drag over the canvas */
+  e.preventDefault();
+  const [x, y] = ovlPoint(e);
+  /* The gesture carries the mode it STARTED in, so switching mode mid-drag cannot turn a
+     half-drawn box into a sweep that deletes what it covers. */
+  drag = { mode: mode, sx: x, sy: y, x: x, y: y,
+           /* client coords are what isClick() measures - see there */
+           csx: e.clientX, csy: e.clientY, cx: e.clientX, cy: e.clientY,
+           /* the image the gesture STARTED on; a gesture never applies to any other */
+           img: cur.image_id };
+  drawCanvas();
+};
+
+/* mousemove/mouseup live on `window`, not on the canvas: a sweep that runs off the edge of
+   the image would otherwise never see its mouseup, leaving `drag` armed so the NEXT click
+   completes a rectangle the human never drew. `drag` is only ever set by the canvas's own
+   mousedown, so a click anywhere else is still ignored. */
+
+/* True when the in-flight gesture no longer belongs to what is on screen. `drag` outliving
+   its image is not hypothetical: hold the button mid-sweep, tap an arrow, and load() swaps
+   `toks` for the next image's - the release would then splice boxes out of an image the
+   sweep never touched, and A would write those deletions into ITS record. */
+function dragIsStale() { return !cur || !drag || drag.img !== cur.image_id; }
+
+window.onmousemove = e => {
+  if (!drag) return;
+  if (dragIsStale()) { drag = null; drawCanvas(); return; }
+  /* The button came up somewhere this page never sees the event (outside the window, over
+     browser chrome). Cancel rather than complete: finishing a delete whose release was never
+     observed removes boxes the reviewer did not knowingly sweep. */
+  if (e.buttons === 0) {
+    drag = null; drawCanvas();
+    msg('gesture cancelled - the button was released outside the page');
+    return;
+  }
+  [drag.x, drag.y] = ovlPoint(e);
+  drag.cx = e.clientX; drag.cy = e.clientY;
+  drawCanvas();
+};
+
+window.onmouseup = e => {
+  if (!drag) return;
+  if (dragIsStale()) { drag = null; draw(); return; }
+  [drag.x, drag.y] = ovlPoint(e);
+  drag.cx = e.clientX; drag.cy = e.clientY;
+  if (drag.mode === 'draw') {
+    if (isClick()) {
+      /* Silence here reads as "drawing is broken" and the reviewer stops trying. Single
+         characters like `L`/`R` are exactly the in-scope tokens the seed most often misses,
+         and they are the ones a reviewer instinctively CLICKS rather than drags. */
+      msg('drag out a rectangle to draw - a click on its own is too small to be a box');
+    } else {
+      /* a hand-drawn box: confidence null so no gate can ever hide it, seed_index null so
+         --summary counts it as "added by hand" rather than a kept seed box. */
+      pushUndo();
+      toks.push({
+        text: '', box: dragRect(), label: DEFAULT_LABEL, confidence: null, seed_index: null
+      });
+      sel = toks.length - 1;
+      focusTok = sel;
+    }
+    drag = null;
+  } else {
+    const hit = deleteTargets();
+    drag = null;
+    if (hit.length) {
+      pushUndo();
+      /* descending, so each splice cannot shift an index that is still to be removed */
+      hit.sort((a, b) => b - a).forEach(i => toks.splice(i, 1));
+      /* `sel` indexes `toks` and every splice shifts it, so a stale selection would nudge a
+         different box than the one highlighted. Drop it rather than try to track it. */
+      sel = -1;
+      msg('deleted ' + hit.length + ' box' + (hit.length === 1 ? '' : 'es') + '  (Ctrl+Z undoes)');
+    }
   }
   draw();
 };
@@ -253,6 +757,31 @@ function deletedIndexes() {
      `toks` keeps hidden tokens and drops only deleted ones */
   const live = new Set(toks.map(t => t.seed_index).filter(i => i != null));
   return cur.seed_tokens.map((t, k) => k).filter(k => !live.has(k));
+}
+
+/* accepted vs edited, derived rather than bound to a second key. They are separate columns
+   on --summary's `progress` line, so recording every decision as "accepted" would peg the
+   edited column at 0 and misreport how much of the seed was rewritten. Asking the human to
+   remember which key means "I changed something" is the same defect with extra steps.
+
+   They do NOT drive the kept / text-fixed / box-fixed / label-fixed / deleted split:
+   collect() derives that itself by diffing the record's tokens against the seed on disk, and
+   uses `state` only to tally progress and to short-circuit deferred images. Keep it that way
+   - filtering that split on `state` would drop every edited image's token diffs from it.
+   A gate-hidden token is NOT a difference: it is excluded from the record but untouched in
+   the frozen seed, and collect() already counts it under `hidden`. */
+function isEdited() {
+  if (deletedIndexes().length) return true;
+  return toks.filter(t => visible(t)).some(t => {
+    if (t.seed_index == null) return true;  /* drawn by hand */
+    const s = cur.seed_tokens[t.seed_index];
+    if (!s) return true;
+    /* label is compared against DEFAULT_LABEL, never against the seed's: the seed's is a
+       hardcoded placeholder (D-10c.2), so comparing to it would mark EVERY image `edited`
+       and flatten the accepted/edited split to a constant. */
+    return t.text !== s.text || t.label !== DEFAULT_LABEL ||
+           t.box.some((v, i) => +v !== +s.bbox[i]);
+  });
 }
 
 async function save(state, extra) {
@@ -300,9 +829,17 @@ async function decide(state, extra) {
   if (busy) return false;
   busy = true;
   try {
+    /* captured before the save: `cur` moves when load() installs the next image */
+    const done = cur.image_id;
     if (!await save(state, extra)) return false;
     const next = index.findIndex(x => x.state === 'unreviewed');
     await load(next === -1 ? pos : next);
+    /* AFTER the load, because load() clears the message. Without a positive confirmation the
+       only evidence a save landed is the header counter, and "did that actually save?" is the
+       question that makes a reviewer redo work they already did. The id is a hash and is
+       already on screen in the header, so naming the file it went to adds no PHI. */
+    msg('saved ' + done + ' as ' + state + ' -> ground_truth/review/' + done + '.json' +
+        (next === -1 ? '   (nothing unreviewed left)' : ''));
     return true;
   } finally { busy = false; }
 }
@@ -319,7 +856,58 @@ async function saveDefer() {
   if (ok) document.getElementById('note').value = '';
 }
 
+/* Save WITHOUT advancing (Ctrl+S). `decide` auto-advances, which is right for a finished
+   image but wrong mid-edit: a long ultrasound frame is worth committing before carrying on,
+   and a browser crash or the workstation's idle timeout should not cost the whole image. */
+async function saveHere() {
+  if (busy) return;
+  busy = true;
+  try {
+    const state = isEdited() ? 'edited' : 'accepted';
+    const id = cur.image_id;
+    if (!await save(state)) return;
+    refreshHeader();
+    msg('saved ' + id + ' as ' + state + ' -> ground_truth/review/' + id +
+        '.json   (stayed on this image)');
+  } finally { busy = false; }
+}
+
+function copyBox() {
+  if (sel < 0) { msg('select a box first - Tab, or click its text field on the right'); return; }
+  const t = toks[sel];
+  clip = { text: t.text, box: t.box.slice(), label: t.label };
+  msg('copied 1 box - page-local buffer, NOT the system clipboard; Ctrl+V pastes');
+}
+
+function pasteBox() {
+  if (!clip) { msg('nothing copied on this image'); return; }
+  pushUndo();
+  /* Offset so the copy is not invisibly stacked on its source, and marked hand-drawn
+     (confidence null, seed_index null) because it is: it is not a Tesseract detection, so no
+     gate may hide it and --summary must count it as added rather than as a kept seed box. */
+  toks.push({ text: clip.text, box: clip.box.map(v => v + 8), label: clip.label,
+              confidence: null, seed_index: null });
+  sel = toks.length - 1;
+  draw();
+  msg('pasted - arrow keys move it, shift+arrow resizes');
+}
+
+/* Tab cycles the selection. This exists because clicking a box now DELETES it, so the mouse
+   can no longer select one; without a keyboard path the arrow-key nudge/resize would only be
+   reachable by clicking into a token's text field, which then swallows the arrows. */
+function cycleSel(d) {
+  const vis = toks.map((t, i) => i).filter(i => visible(toks[i]));
+  if (!vis.length) { msg('no visible boxes at this gate'); return; }
+  const at = vis.indexOf(sel);
+  sel = vis[at < 0 ? (d > 0 ? 0 : vis.length - 1) : (at + d + vis.length) % vis.length];
+  draw();
+}
+
 document.getElementById('gate').oninput = e => { gate = +e.target.value; draw(); };
+
+/* `scale` and the canvas element size are computed only inside drawCanvas(), so without this
+   a resize leaves the drawn boxes at the old geometry until the next redraw. */
+window.onresize = () => { if (cur) draw(); };
 
 document.onkeydown = e => {
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') {
@@ -327,18 +915,94 @@ document.onkeydown = e => {
     return;
   }
   const k = e.key;
-  if (k === 'a' || k === 'A') decide('accepted');
-  else if (k === 'e' || k === 'E') { edit = true; msg('edit mode'); draw(); }
-  else if (k === 'd' || k === 'D') showDefer();
+  /* Ctrl/Cmd combos are handled FIRST so no plain-key branch can swallow one, and metaKey is
+     accepted alongside ctrlKey so the bindings also work if this is ever opened from a Mac.
+     Anything not listed falls through untouched - Ctrl+R, Ctrl+F and devtools keep working. */
+  if (e.ctrlKey || e.metaKey) {
+    const c = k.toLowerCase();
+    if (c === 'z') { if (e.shiftKey) redo(); else undo(); }
+    else if (c === 'y') redo();
+    else if (c === 'c') copyBox();
+    else if (c === 'v') pasteBox();
+    /* preventDefault matters here beyond convenience: the browser's own Ctrl+S would write
+       this PHI-displaying page, token text and all, to the Downloads folder. */
+    else if (c === 's') saveHere();
+    else return;
+    e.preventDefault();
+    return;
+  }
+  if (k === 'a' || k === 'A') decide(isEdited() ? 'edited' : 'accepted');
+  /* E and D pick a MODE; neither is a toggle, so pressing the one you are already in is a
+     harmless no-op rather than a silent flip into the other. */
+  else if (k === 'e' || k === 'E') { setMode('draw'); msg('DRAW - drag to outline a new box'); }
+  else if (k === 'd' || k === 'D') {
+    setMode('delete');
+    msg('DELETE - click a box to remove it, drag to sweep (Ctrl+Z undoes)');
+  }
+  /* F, not D: D is delete mode now. */
+  else if (k === 'f' || k === 'F') showDefer();
   else if (k === 'Escape') { sel = -1; hideDefer(); draw(); }
-  else if (k === 'Delete' || k === 'Backspace') {
-    if (sel >= 0 && edit) { toks.splice(sel, 1); sel = -1; draw(); }
+  else if (k === 'Tab') cycleSel(e.shiftKey ? -1 : 1);
+  else if (k === 'Enter') {
+    /* type into the selected box without reaching for the mouse; Esc blurs back out */
+    if (sel >= 0) { focusTok = sel; draw(); } else return;
+  } else if (k === 'l' || k === 'L') {
+    if (sel >= 0) { pushUndo(); const t = toks[sel];
+      t.label = t.label === 'PHI' ? 'KEEP' : 'PHI'; draw(); }
+  } else if (k === 'k' || k === 'K' || k === 'p' || k === 'P') {
+    /* BULK label of every VISIBLE box. The seeder labels every token "PHI" because Tesseract
+       cannot know better (D-10c.2), so on a vendor-overlay frame - millimetre measurements,
+       L/R laterality, window settings - nearly every box is wrong and needs flipping. One
+       keypress plus a couple of individual L flips, instead of thirty. Hidden boxes are left
+       alone: they are not in the record, and labelling what you cannot see is guessing. */
+    pushUndo();
+    const want = (k === 'k' || k === 'K') ? 'KEEP' : 'PHI';
+    let n = 0;
+    toks.forEach(t => { if (visible(t) && t.label !== want) { t.label = want; n++; } });
+    draw();
+    msg('set ' + n + ' visible box' + (n === 1 ? '' : 'es') + ' to ' + want +
+        '  (L flips one, Ctrl+Z undoes)');
+  } else if (k === 'o' || k === 'O') {
+    origSize = (origSize + 1) % ORIG_FRAC.length;
+    drawCanvas();
+    msg('original preset ' + Math.round(ORIG_FRAC[origSize] * 100) + '% width' +
+        (origZoom === 1 ? '' : '  (x' + origZoom.toFixed(2) + ' from , .)'));
+  /* Resize is view-only - it touches no token, so it is not undoable and never dirties the
+     record. Both accept the shifted glyph the same key produces (+ and _, < and >), because
+     which one arrives depends on the keyboard layout, not on intent. */
+  } else if (k === '=' || k === '+') zoomWork(ZOOM_STEP);
+  else if (k === '-' || k === '_') zoomWork(1 / ZOOM_STEP);
+  else if (k === '.' || k === '>') zoomOrig(ZOOM_STEP);
+  else if (k === ',' || k === '<') zoomOrig(1 / ZOOM_STEP);
+  else if (k === '0') {
+    /* one key back to the layout every other image was reviewed at - size AND position, so a
+       panel dragged somewhere awkward is always one key from its home corner */
+    if (!cur) return;
+    workZoom = 1; origZoom = 1;
+    origPos = { right: ORIG_HOME.right, bottom: ORIG_HOME.bottom };
+    drawCanvas();
+    msg('both panes reset to the default size and position');
+  } else if (k === '?' || k === '/') {
+    const f = document.getElementById('helpfull');
+    f.hidden = !f.hidden;
+    /* the layout budget in drawCanvas assumes the short footer, so re-fit after a toggle */
+    if (cur) drawCanvas();
+  } else if (k === '[' || k === ']') {
+    /* nudge the view gate without the mouse. It only changes what is SHOWN - a hidden token
+       stays in the frozen seed on disk, so this is never destructive and never undoable. */
+    gate = Math.min(100, Math.max(0, gate + (k === ']' ? 5 : -5)));
+    draw();
+  } else if (k === 'Delete' || k === 'Backspace') {
+    if (sel >= 0) { pushUndo(); toks.splice(sel, 1); sel = -1; draw(); }
   } else if (k === 'ArrowLeft' || k === 'ArrowRight') {
     const d = k === 'ArrowLeft' ? -1 : 1;
-    if (sel >= 0 && edit) {
-      /* a selected box takes the arrows: nudge, or resize with shift */
+    if (sel >= 0) {
+      /* a selected box takes the arrows: nudge, or resize with shift. Tagged so a held key
+         collapses into one undo step instead of one per repeat. */
+      pushUndo('move' + sel);
       const t = toks[sel];
       if (e.shiftKey) t.box[2] += d; else { t.box[0] += d; t.box[2] += d; }
+      t.box = clampBox(t.box);
       draw();
     } else {
       /* manual navigation reaches ANY image, including reviewed ones - that is the undo
@@ -346,9 +1010,11 @@ document.onkeydown = e => {
       load(pos + d);
     }
   } else if (k === 'ArrowUp' || k === 'ArrowDown') {
-    if (sel < 0 || !edit) return;
+    if (sel < 0) return;
     const d = k === 'ArrowUp' ? -1 : 1, t = toks[sel];
+    pushUndo('move' + sel);
     if (e.shiftKey) t.box[3] += d; else { t.box[1] += d; t.box[3] += d; }
+    t.box = clampBox(t.box);
     draw();
   } else return;
   e.preventDefault();

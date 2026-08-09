@@ -99,6 +99,17 @@ source_paths.txt
 # columns as manifest.csv, so same class — never commit. Commit the printed
 # sample_sha256 in the plan/run metadata instead, which is what pins the set.
 gt_sample_*.csv
+# gt_pilot_*.csv = the same sub-manifest shape under a different name (the 10c/10d
+# pilot draw). It carries series_uid, study_date and institution_name, so it is the
+# same Limited-Data-Set class as manifest.csv — the gt_sample_*.csv rule above does
+# NOT match this filename, which left gt_pilot_v1.csv committable until 2026-08-09.
+gt_pilot_*.csv
+
+# seed_summary*.json = PHI-free per-image count tables, ignored for the same reason
+# as ground_truth/seed_summary.json above: regenerable build output, and a per-image
+# count table is not something to publish. The exact-name rule above missed the
+# per-stratum variants (seed_summary_v2.json, _pilot, _ct_axial, _ct_scout).
+ground_truth/seed_summary*.json
 
 # ---- NOT FOR THE PUBLIC REPO (gradienthealth/ocr-benchmarking) ----
 # Personal working docs: internal planning, decision log, and learning journal.

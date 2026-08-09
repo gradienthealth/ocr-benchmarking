@@ -126,9 +126,14 @@ def _ui_visible(tok: dict, gate: float) -> bool:
     return conf is None or conf < 0 or conf >= gate
 
 
+#: Mirrors review_ui.html's DEFAULT_LABEL. The page ignores the seed's own label — it is a
+#: hardcoded "PHI" placeholder (D-10c.2), not information — and starts every token here.
+UI_DEFAULT_LABEL = "KEEP"
+
+
 def _ui_tokens_from_seed(seed_tokens: list[dict]) -> list[dict]:
     """What review_ui.html builds from `seed_tokens` on first open (load(): bbox -> box)."""
-    return [{"text": t["text"], "box": list(t["bbox"]), "label": t["label"],
+    return [{"text": t["text"], "box": list(t["bbox"]), "label": UI_DEFAULT_LABEL,
              "confidence": t["confidence"], "seed_index": k}
             for k, t in enumerate(seed_tokens)]
 
@@ -410,6 +415,9 @@ def test_saved_record_round_trips_tokens_and_boxes_not_the_seed(
         edited = _ui_tokens_from_seed(seeds["aaaa0002"])
         edited[0]["text"] = "GRDN9999"
         edited[0]["box"] = [11.0, 12.0, 55.0, 40.0]
+        # explicit, not inherited: the page defaults every token to KEEP, so PHI here is the
+        # reviewer's decision — and it keeps both labels in this round-trip assertion.
+        edited[0]["label"] = "PHI"
         edited.append({"text": "ACC-0099", "box": [100.0, 100.0, 160.0, 130.0],
                        "label": "KEEP", "confidence": None, "seed_index": None})
         client.save("aaaa0003", _ui_save_body(edited, 0.0, state="edited"))
@@ -537,7 +545,7 @@ def test_summary_counts_and_percentiles_match_hand_computed_values(
             _seed_tok(FAKE_TOKENS[2], (10, 90, 70, 114), 90),   # box-fixed        w60 h30
             _seed_tok(FAKE_TOKENS[3], (10, 130, 90, 154), 90),  # deleted
             _seed_tok(FAKE_TOKENS[4], (10, 170, 110, 194), 10),  # hidden by the gate
-            _seed_tok(FAKE_TOKENS[5], (10, 200, 40, 224), -1.0),  # kept unchanged  w30 h24
+            _seed_tok(FAKE_TOKENS[5], (10, 200, 40, 224), -1.0),  # kept, PHI-labelled w30 h24
         ],
         # B: both kept unchanged, incl. a single-character token.  w6 h14 / w40 h24
         "aaaa0002": [_seed_tok("L", (5, 5, 11, 19), 80),
@@ -554,6 +562,11 @@ def test_summary_counts_and_percentiles_match_hand_computed_values(
     a_toks = _ui_tokens_from_seed(seeds["aaaa0001"])
     a_toks[1]["text"] = "GRDN9999"                      # text-fixed
     a_toks[2]["box"] = [10.0, 90.0, 70.0, 120.0]        # box-fixed (h 24 -> 30)
+    # The page defaults every token to KEEP (DEFAULT_LABEL), so a PHI label is the reviewer's
+    # affirmative decision. It must NOT disturb the kept/text-fixed/box-fixed split — the
+    # seed's own label is a hardcoded "PHI" placeholder (D-10c.2) and carries no information,
+    # so this token still counts as `unchanged`; only the label DISTRIBUTION records it.
+    a_toks[5]["label"] = "PHI"
     del a_toks[3]                                       # deleted by the human
     a_toks.append({"text": "ACC-0099", "box": [200.0, 10.0, 260.0, 58.0], "label": "PHI",
                    "confidence": None, "seed_index": None})  # added by hand  w60 h48
@@ -572,11 +585,17 @@ def test_summary_counts_and_percentiles_match_hand_computed_values(
     # hides 1; B gives 2 kept; the deferred image contributes nothing but its state.
     assert (every["unchanged"], every["text_fixed"], every["box_fixed"], every["deleted"],
             every["added"], every["hidden"], every["non_default_gate"]) == (4, 1, 1, 1, 1, 1, 1)
+    # label distribution over the RECORDED tokens: A records 5 (the relabelled seed token and
+    # the hand-drawn one are PHI, the other 3 keep the KEEP default), B records 2 KEEP. A
+    # seed-vs-record label diff is deliberately NOT computed — the seed's label is a hardcoded
+    # placeholder, so such a diff would read ~100% on every stratum and mean nothing.
+    assert (every["keep"], every["phi"]) == (5, 2)
     assert every["defers"] == {"unreadable": 0, "ambiguous_token": 0,
                                "possible_non_blank_control": 0, "needs_cal": 1}
     mg = stats["mg_2d"]
     assert (mg["total"], mg["edited"], mg["deferred"], mg["unchanged"], mg["text_fixed"],
             mg["box_fixed"], mg["deleted"], mg["added"]) == (2, 1, 1, 2, 1, 1, 1, 1)
+    assert (mg["keep"], mg["phi"]) == (3, 2)
     sc = stats["ct_secondary_capture"]
     assert (sc["total"], sc["accepted"], sc["unchanged"], sc["hidden"], sc["deleted"],
             sc["added"], sc["non_default_gate"]) == (1, 1, 2, 0, 0, 0, 0)
@@ -592,6 +611,7 @@ def test_summary_counts_and_percentiles_match_hand_computed_values(
     assert "progress   accepted 1  edited 1  deferred 1  unreviewed 1" in all_block
     assert ("seed       kept 4 (57.1%)  text-fixed 1 (14.3%)  box-fixed 1 (14.3%)  "
             "deleted 1 (14.3%)  added 1") in all_block
+    assert "labels     KEEP 5  PHI 2" in all_block
     # sorted w = [6,20,30,40,40,60,60] -> idx 0/3/6; h = [14,24,24,24,24,30,48] -> idx 0/3/6;
     # h/img = h/240 -> 0.0583/0.1/0.2
     assert ("geometry   w p10/p50/p90 6.0/40.0/60.0px  h 14.0/24.0/48.0px  "
@@ -892,6 +912,49 @@ def test_multi_pair_union_dedupe_and_hard_failures(
 # ---------------------------------------------------------------------------
 # 12. deferral round-trip and note confidentiality
 # ---------------------------------------------------------------------------
+
+
+def test_a_defer_records_no_deletions_so_swept_seed_boxes_come_back(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A deferred image is UNDECIDED, so it retires nothing — not tokens, not deletions.
+
+    The page treats `deleted_seed_indexes` as permanent: `restoreSaved()` drops those seed
+    indexes from the working set on every reopen. Persisting them on a *deferred* record
+    would therefore make "come back to this later" destructive — sweep away the junk on an
+    mg_2d frame, then press D because it turns out to be unreadable, and the seed boxes are
+    gone from an image nobody has ruled on, with no way back in the UI. Same argument as the
+    empty `tokens` list: re-opening a deferred image re-reads the whole seed.
+    """
+    _review_dir(tmp_path, monkeypatch)
+    seed = [_seed_tok(FAKE_TOKENS[0], (10, 10, 30, 34), 90),
+            _seed_tok(FAKE_TOKENS[1], (10, 50, 50, 74), 90),
+            _seed_tok(FAKE_TOKENS[2], (10, 90, 70, 114), 90)]
+    renders, seed_dir = _build_set(tmp_path, "a", {"aaaa0001": seed})
+    groups = _groups_csv(tmp_path / "groups.csv", {"aaaa0001": "mg_2d"})
+    images, _ = review_gt.load_pairs([f"{renders}:{seed_dir}"], review_gt.load_groups(groups))
+
+    with _running(images) as client:
+        # the page posts what it swept even when the decision is a defer
+        body = _ui_save_body([], 0.0, state="deferred", defer_reason="unreadable")
+        body["deleted_seed_indexes"] = [0, 1, 2]
+        assert client.save("aaaa0001", body)[0] == 200
+
+        disk = json.loads(review_gt.record_path("aaaa0001").read_text(encoding="utf-8"))
+        assert disk["state"] == "deferred"
+        assert disk["tokens"] == []
+        assert disk["deleted_seed_indexes"] == []       # the whole point
+
+        # and the reopen really does hand every seed box back to the reviewer
+        served = client.get_json("/api/image/aaaa0001")
+        assert [t["seed_index"]
+                for t in _ui_reload_tokens(served["seed_tokens"], served["saved"])] == [0, 1, 2]
+
+    # a non-deferred state still records deletions — this must not have disabled the feature
+    review_gt.write_record("aaaa0001", {"state": "accepted", "tokens": [],
+                                        "deleted_seed_indexes": [0, 2]})
+    disk = json.loads(review_gt.record_path("aaaa0001").read_text(encoding="utf-8"))
+    assert disk["deleted_seed_indexes"] == [0, 2]
 
 
 def test_defer_reasons_round_trip_and_the_note_never_leaves_the_record(
