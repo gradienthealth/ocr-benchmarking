@@ -86,6 +86,11 @@ __pycache__/
 # Commit the *hash* of gt.csv, never its contents.
 !ground_truth/gt.csv.sha256
 
+# text_presence_*.csv = image_id + has_text boolean, PHI-free by construction. Negated so the
+# recall denominator lives in git (CLAUDE.md §8: a stratum with no text-bearing images must be
+# visible, or its recall reads a meaningless 100%).
+!ground_truth/text_presence_*.csv
+
 # NOTE: commit the *hash* of gt.csv, never its contents.
 # manifest.csv contains quasi-identifiers (dates, pseudonyms) — keep it out of
 # git unless your team has explicitly classified it as shareable.

@@ -12,6 +12,14 @@ data leaves, and it is deliberately narrow:
     dict of counts. No accessor returns a row, a list of identifiers, or any raw
     quasi-identifier value.
 
+D-10.8 (resolved 2026-08-09, Phase 10e): `series_uid` is loaded as an INDEX KEY only.
+It is not in `_EXPOSED_COLUMNS`, no accessor returns it, and no accessor enumerates it
+— the sole way to use it is `attrs_for_series(uid)`, which requires the caller to
+already hold the uid and hands back three CATEGORICAL values. Both invariants above
+therefore still hold: the retained columns are unchanged, and nothing that leaves this
+module is an identifier. 10e needs this because `gt.csv` carries `vendor`/`stratum`/
+`modality` per row and CLAUDE.md rule #7 forbids re-deriving any of them.
+
 Whitelist (deny-by-default): a column Gradient adds later is silently dropped, not
 leaked. `vendor`/`stratum` come straight from the manifest columns and are NEVER
 re-derived from model strings (CLAUDE.md §6.7).
@@ -37,6 +45,12 @@ _COLUMN_MAP: dict[str, str] = {
 
 _EXPOSED_COLUMNS = tuple(_COLUMN_MAP.values())  # ("modality", "stratum", "vendor", "frame_idx")
 
+# The join key (D-10.8). Deliberately NOT in `_COLUMN_MAP`: it becomes the DataFrame
+# INDEX and is never a retained column, so `ManifestView.__init__`'s "refuses
+# non-whitelisted columns" guard keeps working unmodified and no aggregate accessor can
+# accidentally surface a UID.
+_INDEX_COLUMN = "series_uid"
+
 # D-1.2 (resolved 2026-06-30): there is NO control-flag column. `ct_axial` is
 # Gradient's DESIGNATED no-text negative-control stratum (plain axial CT has no
 # burned-in header/footer text by design), used to measure a model's hallucination
@@ -55,13 +69,26 @@ def load_manifest(path: str | Path) -> ManifestView:
     """
     df = pd.read_csv(path, dtype=str)
 
-    missing = [src for src in _COLUMN_MAP if src not in df.columns]
+    missing = [src for src in (*_COLUMN_MAP, _INDEX_COLUMN) if src not in df.columns]
     if missing:
         raise ValueError(f"manifest is missing required column(s): {sorted(missing)}")
 
     # Project to the whitelist and rename. Non-whitelisted columns are discarded here
     # and never enter the ManifestView.
     projected = df[list(_COLUMN_MAP)].rename(columns=_COLUMN_MAP)
+
+    # D-10.8: series_uid rides along as the INDEX, not as a column. Validate it here,
+    # loudly — the 10e join is 1:1 or it is wrong, and a duplicate uid would silently
+    # hand one series' vendor/stratum to another's scored rows.
+    uids = df[_INDEX_COLUMN]
+    if uids.isna().any() or (uids == "").any():
+        raise ValueError(f"manifest has missing/blank values in {_INDEX_COLUMN!r}")
+    if uids.duplicated().any():
+        raise ValueError(
+            f"manifest has duplicate {_INDEX_COLUMN} values "
+            f"({int(uids.duplicated().sum())}) — the series join must be 1:1"
+        )
+    projected.index = pd.Index(uids, name=_INDEX_COLUMN)
 
     # Categorical columns must have no missing/blank values. A silent NaN here would
     # otherwise crash sorted() in ManifestView._counts() (NaN vs str comparison) the
@@ -99,7 +126,14 @@ class ManifestView:
         extra = set(frame.columns) - set(_EXPOSED_COLUMNS)
         if extra:
             raise ValueError(f"ManifestView refuses non-whitelisted columns: {sorted(extra)}")
-        self._frame = frame[list(_EXPOSED_COLUMNS)].reset_index(drop=True)
+        # The index is PRESERVED, not reset (D-10.8): `load_manifest` puts `series_uid`
+        # there so `attrs_for_series` can do the 10e join. It is an index, never a column,
+        # so the guard above still governs everything that is retained as data. A view
+        # built with some other index simply has no usable `attrs_for_series`.
+        # .copy() so the view owns its data: a plain column selection is a slice of the
+        # caller's DataFrame, and a later write through that caller would mutate what is
+        # meant to be a read-only projection.
+        self._frame = frame[list(_EXPOSED_COLUMNS)].copy()
 
     # --- counts-only accessors ---------------------------------------------------
 
@@ -139,6 +173,56 @@ class ManifestView:
         number is the pool to hand to that step, not a count of confirmed-blank frames.
         """
         return int((self._frame["stratum"] == BLANK_CONTROL_STRATUM).sum())
+
+    def attrs_for_series(self, series_uid: str) -> tuple[str, str, str]:
+        """`(vendor, stratum, modality)` for ONE series — the only per-row accessor.
+
+        D-10.8, added for Phase 10e: `gt.csv` carries these three per row and CLAUDE.md
+        rule #7 forbids re-deriving any of them from filenames or model strings, so the
+        join has to come through this module.
+
+        It does not weaken the module's contract. The caller must ALREADY hold the uid to
+        ask, so nothing is disclosed that the caller did not have; what comes back is three
+        categorical values and never an identifier; and there is no accessor that
+        enumerates or returns the uids themselves.
+
+        `frame_idx` is deliberately NOT returned. The manifest's `middle_frame_index` is
+        `number_of_frames // 2` computed from a DICOM tag, and it disagrees with the frame
+        actually rendered and annotated wherever the tar holds fewer frames than the tag
+        claims. Phase 10e takes `frame_idx` from 10b's render manifest — the recorded fact
+        — so exposing it here would only invite the wrong one.
+
+        Raises:
+            KeyError: `series_uid` is not in the manifest. Loud on purpose — a default
+                would put some other series' vendor on a scored row.
+        """
+        try:
+            row = self._frame.loc[series_uid]
+        except KeyError:
+            raise KeyError(
+                "series_uid is not in the loaded manifest — wrong manifest, or the "
+                "back-map and the manifest are from different pulls"
+            ) from None
+        return str(row["vendor"]), str(row["stratum"]), str(row["modality"])
+
+    def frame_idx_for_series(self, series_uid: str) -> int:
+        """`middle_frame_index` for one series — DIAGNOSTIC ONLY, never a `gt.csv` value.
+
+        Deliberately separate from `attrs_for_series` rather than a fourth element of its
+        tuple. Phase 10e takes `frame_idx` from 10b's render manifest (decision 6), because
+        this number is `number_of_frames // 2` derived from a DICOM tag and disagrees with
+        the frame actually rendered wherever the tar holds fewer frames than the tag claims.
+        The split is the point: a caller that wants a row value reaches for
+        `attrs_for_series` and cannot get this by accident, and a caller that wants to
+        MEASURE the disagreement has to name this method and say so.
+
+        Raises:
+            KeyError: `series_uid` is not in the manifest.
+        """
+        try:
+            return int(self._frame.loc[series_uid, "frame_idx"])
+        except KeyError:
+            raise KeyError("series_uid is not in the loaded manifest") from None
 
     # --- internal ----------------------------------------------------------------
 
