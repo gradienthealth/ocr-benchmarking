@@ -13,12 +13,21 @@ separate `gt_schema.py` inside `ground_truth/`. `matching.py` and `metrics.py` n
 the GT shape, and routing it through this PHI-free module lets them import it without
 taking a dependency on the PHI-touching `ground_truth/` package.
 
-This file touches ZERO PHI: it is pure dataclasses plus a string normalizer. It has
-no engine-specific imports and depends only on the standard library.
+`Match`/`MatchResult` live here for exactly the same reason (moved from `matching.py`
+in Phase 13b). They are the shape of "what happened to each GT token on one image",
+and there are now TWO producers of that shape: `matching.py`, which derives it by IoU
+from an engine's own boxes, and `reading.py`, which is handed the boxes and so has no
+matcher at all. `metrics.py` consumes it. Keeping the shape here lets the reading arm
+reuse the ONE frozen scoring path without importing the matcher it does not use.
+
+This file touches ZERO PHI: it is pure dataclasses plus a string normalizer and a
+config digest. It has no engine-specific imports and depends only on the standard library.
 """
 
 from __future__ import annotations
 
+import hashlib
+import json
 import unicodedata
 from dataclasses import dataclass
 
@@ -155,6 +164,40 @@ class GTToken:
     label: str  # "PHI" | "KEEP"
 
 
+@dataclass
+class Match:
+    """One GT token paired with one prediction."""
+
+    gt: GTToken
+    word: OCRWord
+    # The raw prediction exactly as the engine emitted it — un-normalized. On the
+    # box-free path this is the whole blob word, since no per-token prediction exists.
+    # On the reading path it is the reader's returned string at the GT box.
+
+    iou: float | None
+    # None when the pairing carries no location evidence: the box-free path (a substring
+    # match), and the reading path (the box was GIVEN, so there is nothing to overlap).
+
+
+@dataclass
+class MatchResult:
+    """What the engine did with each GT token on one image."""
+
+    matches: list[Match]
+    omissions: list[GTToken]  # GT tokens no prediction covered
+    hallucinations: list[OCRWord]  # predictions covering no GT token (the dangerous axis)
+    box_free: bool
+    # True → pairing came from the substring path: lower-confidence, no location,
+    # ranked separately from boxed matches — never mixed into the same ranking.
+
+    iou_thr: float | None
+    # Threshold this result was computed with; belongs in run metadata (D-4.2).
+    # None means NO MATCHER RAN — the reading arm (Phase 13b) is handed the GT box, so
+    # there is no threshold and no detection decision to record. It is not a default:
+    # `matching.py` always sets a real value, and a None here is a positive statement
+    # that detection metrics are undefined for the row, not that someone forgot.
+
+
 def normalize(s: str) -> str:
     """Canonicalize a string for exact matching. FROZEN.
 
@@ -174,3 +217,20 @@ def normalize(s: str) -> str:
     every score. It is frozen — treat any edit the way you would an edit to `gt.csv`.
     """
     return unicodedata.normalize("NFC", s).strip()
+
+
+def config_digest(config: dict[str, object]) -> str:
+    """Stable 12-hex-char digest of a declared config dict — THE one algorithm (D-13.5).
+
+    Lives here, next to the `config_hash` field it fills, because there are now two kinds
+    of arm that need an identity: a `Runner` (end-to-end engine) and a `Reader` (crop in,
+    string out). If each computed its own digest, two arms could hash differently for the
+    same config and `aggregate()`'s identity guard would compare incomparable values — the
+    collision D-13.5 exists to stop, reintroduced one level up. `Runner.config_hash()` and
+    `Reader.config_hash()` both delegate here and neither may override.
+
+    Canonical JSON (`sort_keys=True`) so key order never changes the digest; `default=str`
+    so a non-JSON knob (an enum, a Path) degrades to its string form instead of raising.
+    """
+    canonical = json.dumps(config, sort_keys=True, default=str)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:12]
