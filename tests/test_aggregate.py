@@ -37,6 +37,10 @@ def _mkrow(**over) -> dict:
         model_name="fake-engine",
         # Non-empty by default: aggregate() now rejects a blank version (D-8.4).
         version="0.0.0-fake",
+        # Non-empty by default for the same reason, one dimension over (D-13.5): rows that
+        # all carry a blank config_hash collapse to ONE identity and would be averaged.
+        config_id="fake-stock",
+        config_hash="0000fakehash",
         # None by default: no verifier ran. verifier_elapsed=None is what aggregate() checks
         # to decide whether a row's verifier identity is even relevant (D-9.1) — a row with
         # a real verifier_elapsed but blank identity is what gets rejected, not this default.
@@ -189,6 +193,66 @@ def test_refuses_to_blend_two_engine_versions():
 def test_refuses_to_blend_two_model_names():
     with pytest.raises(ValueError, match="refusing to blend"):
         aggregate([_mkrow(model_name="engineA"), _mkrow(model_name="engineB")])
+
+
+# --- config provenance: the D-13.5 collision ----------------------------------
+# The identity guard above keys on (model_name, version, verifier_*). Two arms of the SAME
+# engine at the SAME version — docTR stock vs tuned vs parseq, PP-OCRv6 stock vs tuned
+# thresholds — satisfy every one of those and were averaged into one meaningless row.
+
+
+def test_refuses_to_blend_two_configs_of_one_engine_version():
+    """The headline D-13.5 bug: same engine, same version, different config.
+
+    Everything the pre-D-13.5 guard could see is identical here — one model_name, one
+    version, no verifier — so the batch sailed through and produced a single averaged row
+    that belonged to neither arm.
+    """
+    stock = _mkrow(config_id="stock", config_hash="aaaaaaaaaaaa")
+    tuned = _mkrow(config_id="tuned", config_hash="bbbbbbbbbbbb")
+    assert stock["model_name"] == tuned["model_name"]
+    assert stock["version"] == tuned["version"]  # indistinguishable before D-13.5
+    with pytest.raises(ValueError, match="refusing to blend"):
+        aggregate([stock, tuned])
+
+
+def test_refuses_to_blend_when_only_the_hash_differs():
+    """A relabelled arm is still a different arm.
+
+    The hash is what actually protects the aggregation: if someone reuses a label but a
+    knob moved, `config()` changes and the digest changes. Catching this is the whole
+    reason the digest — not just the human label — sits in the guard tuple.
+    """
+    with pytest.raises(ValueError, match="refusing to blend"):
+        aggregate([
+            _mkrow(config_id="stock", config_hash="aaaaaaaaaaaa"),
+            _mkrow(config_id="stock", config_hash="cccccccccccc"),
+        ])
+
+
+def test_identical_configs_still_aggregate_together():
+    """Guard against over-tightening: one arm's rows must still merge into one result."""
+    agg = aggregate([_mkrow(), _mkrow(), _mkrow()])
+    assert agg["n_images"] == 3
+
+
+def test_blank_config_hash_rejected_even_though_every_row_agrees():
+    """The same hole D-8.4 closed for versions, one dimension over.
+
+    Rows that all carry config_hash "" form ONE tuple, so the blend check is perfectly
+    satisfied — while the batch carries no config provenance at all and may be two arms
+    concatenated. Hence a separate, earlier check.
+    """
+    rows = [_mkrow(config_hash=""), _mkrow(config_hash="")]
+    assert len({r["config_hash"] for r in rows}) == 1  # the blend check sees no problem
+    with pytest.raises(ValueError, match="no `config_hash`"):
+        aggregate(rows)
+
+
+def test_config_identity_carried_through():
+    agg = aggregate([_mkrow(config_id="parseq", config_hash="dddddddddddd")])
+    assert agg["config_id"] == "parseq"
+    assert agg["config_hash"] == "dddddddddddd"
 
 
 def test_blank_version_rejected_even_though_every_row_agrees():

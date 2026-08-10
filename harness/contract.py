@@ -71,18 +71,40 @@ class OCROutput:
     # `aggregate()` refuses to blend rows whose `(model_name, version)` differ, so a
     # version bump can never merge with prior results (D-8.3).
 
+    config_id: str
+    # SHORT HUMAN LABEL for this arm's configuration — "stock", "tuned", "parseq",
+    # "thr0.2". Exists for the report: `config_hash` below is what actually protects the
+    # aggregation, but a bare hash is unreadable in a findings table (D-13.5).
+    # REQUIRED and validated non-empty for the same reason as `version`.
+
+    config_hash: str
+    # AUTO-COMPUTED digest of every knob that changes what the engine outputs, produced by
+    # `Runner.config_hash()` from the runner's declared `config()` dict — never hand-typed
+    # and never assembled here (D-13.5).
+    #
+    # Why this exists in addition to `config_id`: `aggregate()`'s guard keyed only on
+    # `(model_name, version, verifier_*)`, so docTR-stock, docTR-tuned and docTR+parseq all
+    # presented the SAME identity — same library, same `__version__` — and averaged into one
+    # meaningless row. A human label alone fails open: it prevents that collision only if
+    # someone remembers to change the label when they change a knob, and forgetting is
+    # silent. A hash over the declared config cannot be forgotten — change a threshold and
+    # the identity changes with it.
+    #
+    # REQUIRED and validated non-empty (see `__post_init__`): a blank default would let a
+    # runner that declares nothing sail through, which is precisely the bug.
+
     box_free: bool = False
     # True for the VLM "blob" path (a single text response, no per-word boxes). Set by
     # the runner. Box-free outputs keep the primary engine's box and swap only the string.
 
     def __post_init__(self) -> None:
-        """Reject a blank version at construction — the earliest point it can be caught.
+        """Reject a blank version or config identity at construction — the earliest point.
 
-        Making the field required stops an OMITTED version (TypeError from the dataclass
+        Making the fields required stops an OMITTED value (TypeError from the dataclass
         constructor); this stops an EXPLICITLY BLANK one. Both matter, and neither is a
         runner-only concern: a hand-built `OCROutput` in a script or notebook is exactly
-        how un-versioned rows would otherwise reach `aggregate()`. Fixtures must pass an
-        explicit marker (e.g. `"0.0.0-synthetic"`), not "".
+        how un-versioned or un-configured rows would otherwise reach `aggregate()`.
+        Fixtures must pass explicit markers (e.g. `"0.0.0-synthetic"`), not "".
         """
         if not self.version.strip():
             raise ValueError(
@@ -90,6 +112,21 @@ class OCROutput:
                 "(rule #9) — source it from the engine itself (e.g. the library's "
                 "__version__), never hand-type it. Synthetic fixtures should pass an "
                 "explicit marker such as '0.0.0-synthetic'."
+            )
+        if not self.config_id.strip():
+            raise ValueError(
+                "OCROutput.config_id must be a non-empty label for this arm's config "
+                "(e.g. 'stock', 'tuned', 'parseq') — it is how a reader tells two arms of "
+                "the same engine apart in the report (D-13.5). Synthetic fixtures should "
+                "pass an explicit marker such as 'synthetic'."
+            )
+        if not self.config_hash.strip():
+            raise ValueError(
+                "OCROutput.config_hash must be a non-empty digest of the runner's declared "
+                "config — produce it with Runner.config_hash(), never hand-type it "
+                "(D-13.5). Without it, two arms of the same engine at the same version "
+                "carry identical identities and aggregate() averages them silently. "
+                "Synthetic fixtures should pass an explicit marker such as '0000synthetic'."
             )
 
 

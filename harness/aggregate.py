@@ -123,6 +123,8 @@ def aggregate(rows: list[dict]) -> dict:
         {
           "model_name": <carried from the rows, for Phase 7>,
           "version": <carried from the rows (D-8.3); always non-empty, see Raises>,
+          "config_id": <carried from the rows (D-13.5); the human label for this arm>,
+          "config_hash": <carried from the rows (D-13.5); always non-empty, see Raises>,
           "verifier_model_name": <carried from the rows; None if no row ran a verifier>,
           "verifier_version": <carried from the rows; None if no row ran a verifier>,
           "n_images": int,
@@ -186,10 +188,29 @@ def aggregate(rows: list[dict]) -> dict:
                 "rejected above."
             )
 
+        # Blank-config check, for the same reason the blank-version check runs above and
+        # BEFORE the tuple comparison (D-13.5): rows that ALL carry a blank `config_hash`
+        # collapse to one consistent tuple, so the comparison below would pass them as a
+        # single identity — which is the collision this field exists to prevent.
+        unconfigured = [
+            i for i, r in enumerate(rows) if not str(r.get("config_hash") or "").strip()
+        ]
+        if unconfigured:
+            raise ValueError(
+                f"aggregate(): {len(unconfigured)} of {len(rows)} rows carry no "
+                f"`config_hash` (first at row index {unconfigured[0]}). Two arms of the "
+                "same engine at the same version — docTR stock vs tuned vs parseq, "
+                "PP-OCRv6 stock vs tuned thresholds — are indistinguishable without it and "
+                "would be averaged into one meaningless row. Produce it with "
+                "Runner.config_hash() from the runner's declared config() (D-13.5)."
+            )
+
         pairs = {
             (
                 r.get("model_name"),
                 r.get("version"),
+                r.get("config_id"),
+                r.get("config_hash"),
                 r.get("verifier_model_name"),
                 r.get("verifier_version"),
             )
@@ -199,7 +220,8 @@ def aggregate(rows: list[dict]) -> dict:
             conflicting = sorted(pairs, key=lambda p: tuple(str(x) for x in p))
             raise ValueError(
                 "aggregate(): refusing to blend rows from different (model_name, version, "
-                f"verifier_model_name, verifier_version) tuples: {conflicting}"
+                "config_id, config_hash, verifier_model_name, verifier_version) tuples: "
+                f"{conflicting}"
             )
 
     by_stratum: dict[str, list[dict]] = {}
@@ -213,6 +235,8 @@ def aggregate(rows: list[dict]) -> dict:
     return {
         "model_name": rows[0].get("model_name") if rows else None,
         "version": rows[0].get("version") if rows else None,
+        "config_id": rows[0].get("config_id") if rows else None,
+        "config_hash": rows[0].get("config_hash") if rows else None,
         "verifier_model_name": rows[0].get("verifier_model_name") if rows else None,
         "verifier_version": rows[0].get("verifier_version") if rows else None,
         "n_images": len(rows),

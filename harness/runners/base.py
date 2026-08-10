@@ -17,6 +17,8 @@ This file touches ZERO PHI: it is a pure abstract interface plus a cost default.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
@@ -30,14 +32,19 @@ if TYPE_CHECKING:  # avoid an import cycle with harness.py; only used for the ty
 class Runner(ABC):
     """One OCR engine, wired into the fixed harness loop.
 
-    Subclasses set `model_name`/`version` (class attributes or in their own `__init__`)
-    and implement `run()`. `version` must be sourced from the real engine (e.g. its
-    library's `__version__`) — never hand-typed — since `aggregate()` keys results by
-    `(model_name, version)` and refuses to blend a version bump into prior results.
+    Subclasses set `model_name`/`version`/`config_id` (class attributes or in their own
+    `__init__`) and implement `run()` and `config()`. `version` must be sourced from the
+    real engine (e.g. its library's `__version__`) — never hand-typed — since `aggregate()`
+    keys results by `(model_name, version, config_id, config_hash, verifier_*)` and refuses
+    to blend a version OR config change into prior results.
     """
 
     model_name: str
     version: str
+
+    config_id: str
+    # Short human label for this arm's configuration — "stock", "tuned", "parseq".
+    # Rendered in the report header so two arms of one engine are tellable apart by eye.
 
     version_source: str | None = None
     # Dotted module path whose `__version__` IS the value of `version` — e.g. "doctr".
@@ -59,6 +66,38 @@ class Runner(ABC):
     def run(self, image_ref: "ImageRef") -> OCROutput:
         """Native engine output -> OCRWord/OCROutput. Boxes in pixels of the fed image."""
         ...
+
+    @abstractmethod
+    def config(self) -> dict[str, object]:
+        """Every knob that changes what this engine outputs, as a flat dict (D-13.5).
+
+        Feeds `config_hash()`, which joins `aggregate()`'s identity guard. Declare a knob
+        here if changing it could change a single box or string: architecture choices,
+        detection/recognition thresholds, resize limits, orientation stages. Do NOT declare
+        things that cannot change the output (device, batch size, log level) — they would
+        split one arm into two identities for no reason.
+
+        **Abstract on purpose.** A default `{}` would let a runner that declares nothing
+        hash identically to every other config of the same engine — the exact collision
+        D-13.5 exists to stop. An incomplete dict is the one remaining way to get a false
+        identity, so `tests/test_runner_contract.py` asserts each runner's declared keys
+        cover its `__init__` signature and its known knobs.
+        """
+        ...
+
+    def config_hash(self) -> str:
+        """Stable 12-hex-char digest of `config()`. Do NOT override.
+
+        Implemented once here so no runner can hash differently — a per-engine digest would
+        make cross-engine identities incomparable and reintroduce the collision. Canonical
+        JSON (`sort_keys=True`) so key order never changes the digest; `default=str` so a
+        non-JSON knob (an enum, a Path) degrades to its string form instead of raising.
+
+        Like `version_source`, this is NOT a second source of truth (D-8.2): the runner
+        declares `config()` and everything downstream derives from it.
+        """
+        canonical = json.dumps(self.config(), sort_keys=True, default=str)
+        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:12]
 
     def cost(self, image_ref: "ImageRef") -> float:
         """Estimated dollar cost of running this engine on `image_ref`.

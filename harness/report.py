@@ -189,6 +189,11 @@ def _header_block(agg: dict, run_metadata: Optional[dict]) -> str:
             ["Field", "Value"],
             [
                 ["Engine (model_name)", model_name],
+                # Config identity (D-13.5) comes from `agg`, not `run_metadata`: it is
+                # carried on every scored row by the runner itself, so unlike the header
+                # scalars below it cannot be forgotten or mistyped at report time.
+                ["Config", agg.get("config_id") or _UNSPEC],
+                ["Config hash", agg.get("config_hash") or _UNSPEC],
                 ["Tier", vals["tier"] or _UNSPEC],
                 ["Exact version", vals["version"] or _UNSPEC],
                 ["Run hash", vals["run_hash"] or _UNSPEC],

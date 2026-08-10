@@ -80,6 +80,14 @@ DETECTION_THRESHOLD = 0.2
 # One language, matching the burned-in-overlay use case (Latin alphanumeric IDs).
 LANGUAGES = ["en"]
 
+# EasyOCR's own default for `link_threshold`, restated here so `config()` can declare it
+# (D-13.5). This runner does NOT pass it — it governs character→region linking rather than
+# detection sensitivity (module docstring) — but a knob left at its default is still a
+# choice, and a tuned arm that moves it must produce a different config hash than this one.
+# If EasyOCR ever changes this default, update the constant: the value in the digest must be
+# the value the engine actually used, or the identity lies.
+LINK_THRESHOLD = 0.4
+
 
 def _to_pixel_bbox(region: Any, page_w: int, page_h: int) -> BBox:
     """Convert one EasyOCR 4-point region to the contract's pixel box. THE CRUX.
@@ -107,6 +115,11 @@ class EasyOcrRunner(Runner):
 
     model_name = "easyocr"
     version_source = "easyocr"  # `version` must equal easyocr.__version__ (contract test)
+    config_id = "thr0.2"
+    # NOT "stock": this is the only runner already shipping a non-default config (0.2 on both
+    # thresholds vs library defaults 0.7/0.4). Labelling it "stock" would misdescribe the
+    # floor arm — Phase 13 step 6 pairs it against a true library-default arm precisely to
+    # separate "EasyOCR over-detects" from "our threshold choice over-detects".
 
     def __init__(self) -> None:
         # Read from the installed library, never hand-typed (base.py's contract + rule #9).
@@ -114,6 +127,25 @@ class EasyOcrRunner(Runner):
         self.languages: list[str] = list(LANGUAGES)
         self.detection_threshold: float = DETECTION_THRESHOLD
         self._reader: easyocr.Reader | None = None
+
+    def config(self) -> dict[str, object]:
+        """The knobs that decide what EasyOCR detects and reads (D-13.5).
+
+        `text_threshold` and `low_text` are declared SEPARATELY rather than as the single
+        `detection_threshold` they are both set from: the effective floor is
+        `max(low_text, text_threshold)` (see the module docstring), so an arm that moves only
+        one of them is a genuinely different configuration and must hash differently.
+
+        `link_threshold` is declared at its library default because the tuned arm may move it
+        — a knob left at a default is still a choice, and its value belongs in the digest.
+        `languages` is declared because a language change swaps the recognition model.
+        """
+        return {
+            "languages": self.languages,
+            "text_threshold": self.detection_threshold,
+            "low_text": self.detection_threshold,
+            "link_threshold": LINK_THRESHOLD,
+        }
 
     @property
     def reader(self) -> easyocr.Reader:
@@ -167,5 +199,7 @@ class EasyOcrRunner(Runner):
             raw_response=results,
             model_name=self.model_name,
             version=self.version,
+            config_id=self.config_id,
+            config_hash=self.config_hash(),
             box_free=False,  # EasyOCR gives per-region boxes
         )

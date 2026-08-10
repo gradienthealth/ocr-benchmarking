@@ -93,6 +93,10 @@ class DoctrRunner(Runner):
 
     model_name = "doctr"
     version_source = "doctr"  # `version` must equal doctr.__version__ (contract test)
+    config_id = "stock"
+    # D-9.2: pretrained defaults, no arch override. The tuned arm (`db_resnet50` and/or
+    # detector postprocess thresholds, Phase 13 step 6) is a SEPARATE runner config with its
+    # own `config_id` — it must not reuse this one, or the two average together (D-13.5).
 
     def __init__(self) -> None:
         # Read from the installed library, never hand-typed (base.py's contract + rule #9).
@@ -101,6 +105,17 @@ class DoctrRunner(Runner):
         self.det_arch: str = _resolved_arch("det_arch")
         self.reco_arch: str = _resolved_arch("reco_arch")
         self._predictor = None
+
+    def config(self) -> dict[str, object]:
+        """The two architecture choices that decide what docTR outputs (D-13.5).
+
+        Both are read off the live `ocr_predictor` signature in `__init__`, not hand-typed,
+        so a docTR release that changes a default changes this hash — which is correct: it
+        IS a different configuration, and its numbers are not comparable to the old ones.
+        `pretrained` is not declared: it is `True` on every arm we will ever score, so it
+        would add a constant to every hash without ever distinguishing anything.
+        """
+        return {"det_arch": self.det_arch, "reco_arch": self.reco_arch}
 
     @property
     def predictor(self):
@@ -153,5 +168,7 @@ class DoctrRunner(Runner):
             raw_response=doc,
             model_name=self.model_name,
             version=self.version,
+            config_id=self.config_id,
+            config_hash=self.config_hash(),
             box_free=False,  # docTR gives per-word boxes
         )

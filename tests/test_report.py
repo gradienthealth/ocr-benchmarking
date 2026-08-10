@@ -52,6 +52,9 @@ def _mkrow(**over) -> dict:
         model_name="synth-engine",
         # Non-empty by default: aggregate() rejects a blank version (D-8.4).
         version="0.0.0-synthetic",
+        # Same, for config identity (D-13.5) — the report renders both in its header.
+        config_id="synthetic",
+        config_hash="0000synthetic",
         # Shared across every row by default (D-9.1 mirrors D-8.4): _synthetic_aggregate()
         # below has exactly one row that actually records a verifier_elapsed, but the
         # mixed-pair guard keys on identity, not elapsed, so every row in one batch must
@@ -222,3 +225,15 @@ def test_missing_run_metadata_is_flagged(tmp_path):
     assert "not fully supplied" in md
     # model_name still comes from the aggregate
     assert "synth-engine" in md
+
+
+def test_config_identity_rendered_in_header(tmp_path):
+    """Two arms of one engine must be tellable apart by reading the report (D-13.5).
+
+    Both come from the aggregate rather than `run_metadata`, so — unlike the header scalars
+    — they cannot be forgotten or mistyped at report time: every scored row carries them.
+    """
+    md = write_report(_synthetic_aggregate(), tmp_path / "r.md")
+    assert "| Config " in md
+    assert "synthetic" in md
+    assert "0000synthetic" in md  # the digest, not just the label

@@ -104,6 +104,10 @@ class PaddleV6Runner(Runner):
 
     model_name = "pp-ocrv6_medium"
     version_source = "paddleocr"  # `version` must equal paddleocr.__version__ (contract test)
+    config_id = "stock"
+    # "stock" here means STOCK THRESHOLDS, not "PaddleOCR out of the box" — the settings in
+    # `config()` below are correctness requirements present on every arm. Phase 13 step 6
+    # says to state that explicitly in the report or the finding is mislabelled.
 
     def __init__(self) -> None:
         # Read from the installed library, never hand-typed (base.py's contract + rule #9).
@@ -111,6 +115,30 @@ class PaddleV6Runner(Runner):
         self.det_model: str = DET_MODEL
         self.rec_model: str = REC_MODEL
         self._ocr: PaddleOCR | None = None
+
+    def config(self) -> dict[str, object]:
+        """Everything passed to `PaddleOCR(...)` that can change a box or a string (D-13.5).
+
+        The model names are declared because a tier swap (medium -> server) is a different
+        engine configuration entirely. The three correctness-required flags are declared even
+        though they are constant today: if a future arm ever flips one, the hash must change
+        rather than quietly merge with these results.
+
+        Detection thresholds are NOT declared here because this runner does not set them —
+        it takes PaddleOCR's defaults. The tuned arm (Phase 13 step 6) sets
+        `text_det_thresh` / `text_det_box_thresh` / `text_det_unclip_ratio` /
+        `text_det_limit_side_len` and must add them to its own `config()`, which is exactly
+        what gives it a distinct hash.
+        """
+        return {
+            "det_model": self.det_model,
+            "rec_model": self.rec_model,
+            "return_word_box": True,
+            "enable_mkldnn": False,
+            "use_doc_orientation_classify": False,
+            "use_doc_unwarping": False,
+            "use_textline_orientation": False,
+        }
 
     @property
     def ocr(self) -> PaddleOCR:
@@ -193,5 +221,7 @@ class PaddleV6Runner(Runner):
             raw_response=results,
             model_name=self.model_name,
             version=self.version,
+            config_id=self.config_id,
+            config_hash=self.config_hash(),
             box_free=False,  # PP-OCR gives per-word boxes
         )

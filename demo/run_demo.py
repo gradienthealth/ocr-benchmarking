@@ -388,11 +388,17 @@ _BOX = {
 }
 
 
-def _out(words, model_name, version):
+def _out(words, model_name, version, config_id="demo"):
     # raw_response is opaque + PHI-bearing by contract; here it's a synthetic placeholder
     # that is never printed or logged (demonstrating the "never echo raw_response" rule).
+    #
+    # config_id/config_hash are required identity fields (D-13.5). These stub engines have no
+    # real config, so the hash is derived from the demo engine's own name — enough to give
+    # each stub a distinct identity, which is what aggregate() checks. A real runner derives
+    # its hash from `Runner.config()` instead of doing this.
+    config_hash = hashlib.sha256(f"{model_name}:{config_id}".encode()).hexdigest()[:12]
     return OCROutput(words=words, raw_response={"synthetic": True}, model_name=model_name,
-                     version=version)
+                     version=version, config_id=config_id, config_hash=config_hash)
 
 
 @priced("cloud")  # cloud OCR -> flat $/image, to show the cost axis
