@@ -90,6 +90,12 @@ UI_HTML = Path(__file__).with_name("review_ui.html")
 # Read-deny rules that name `ground_truth/review/` apply (CLAUDE.md §6.6).
 REVIEW_DIR = Path(__file__).resolve().parent.parent / "ground_truth" / "review"
 
+# The directory `--review-dir` is allowed to point at. Records are PHI (token text), and the
+# Read-deny rules + .gitignore entries that protect them are written around `ground_truth/`
+# — a records dir anywhere else would be unprotected by both. So the flag can rename the
+# directory, never relocate it (Phase 13h; same reasoning as the repo-anchoring above).
+REVIEW_ROOT = Path(__file__).resolve().parent.parent / "ground_truth"
+
 # Copied from render.py:86,104 rather than imported: this server is stdlib-only and must not
 # pull pydicom/numpy/PIL into the PHI-displaying process. The header is validated against
 # this tuple on every load, so drift in 10b fails loudly here instead of silently.
@@ -605,13 +611,40 @@ def print_summary(images: dict[str, dict]) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Declared up here because `--review-dir`'s default READS it a few lines below, and a
+    # `global` after the first use of the name in this scope is a SyntaxError.
+    global REVIEW_DIR
+
     ap = argparse.ArgumentParser(description="Phase 10d review UI (localhost only)")
     ap.add_argument("--set", dest="sets", action="append", required=True, metavar="RENDERS:SEED",
                     help="repeatable <renders_dir>:<seed_dir> pair; the review set is the union")
     ap.add_argument("--groups", type=Path, required=True,
                     help="PHI-free image_id,group CSV from scripts/build_seed_groups.py")
     ap.add_argument("--summary", action="store_true", help="print PHI-free stats and exit")
+    ap.add_argument("--review-dir", type=Path, default=None,
+                    help="where round-1 records are written; must stay inside ground_truth/. "
+                         "Default is ground_truth/review (gt_v1's). A SECOND review set — the "
+                         "Phase 13h tuning slice — needs its own, or build_gt's orphan gate "
+                         "rejects both builds")
     args = ap.parse_args(argv)
+
+    # Rebinding the module global is how build_gt.py already redirects this module's
+    # `record_path()` (see its `_review_stats_block`), so both tools resolve records exactly
+    # one way and cannot drift into disagreeing about which directory a record lives in.
+    # Only an EXPLICIT --review-dir is policed. Left unset, the module constant stands
+    # untouched — it is repo-anchored by construction, and validating it here would also
+    # reject the value tests bind in its place, turning a CLI guard into a test constraint.
+    if args.review_dir is not None:
+        review_dir = args.review_dir.resolve()
+        if review_dir.parent != REVIEW_ROOT:
+            # Records are PHI; the deny rules and .gitignore entries protecting them name
+            # `ground_truth/`. A path outside it writes token text where nothing guards it.
+            print(f"startup failed: --review-dir must be a directory directly inside "
+                  f"{REVIEW_ROOT}/ — records are PHI and the Read-deny and .gitignore rules "
+                  f"that protect them are written around that directory (CLAUDE.md §6.6)",
+                  file=sys.stderr)
+            return 2
+        REVIEW_DIR = review_dir
 
     try:
         groups = load_groups(args.groups)
