@@ -8,7 +8,20 @@ set -euo pipefail
 mapfile -d '' staged < <(git diff --cached --name-only -z --diff-filter=ACM)
 
 phi_regex='\.(dcm|dicom|tar|png|jpg|jpeg|tif|tiff|bmp|gif|webp|npy|npz)$'
-name_regex='(^|/)(gt\.csv|.*raw_response.*|manifest\.csv)$'
+# Phase 10c / D-10c.8: `ground_truth/seed/` holds the per-image Tesseract seed JSONs, which
+# contain read-back PHI token text. Trailing slash is REQUIRED so the PHI-free sibling
+# `ground_truth/seed_summary.json` is NOT matched. Add-only; no existing branch changed.
+# `.*\.part`: an interrupted atomic write. build_gt.write_gt() stages the full gt.csv table
+# at `ground_truth/gt.csv.part` before validating it, and 10d stages review records the same
+# way; a crash leaves the file on disk holding PHI. `gt\.csv$` does not match it (`.part` is
+# the final extension), so this branch is required, not redundant. No .part file is ever a
+# legitimate commit.
+# `ground_truth/seed(_*)/` and `ground_truth/review*/` hold the per-image Tesseract seeds and
+# the human-confirmed review records — the same token text as gt.csv. They are gitignored, so
+# the ONLY way one reaches staging is `git add -f`, which is exactly the bypass this hook
+# exists to catch. `[^/]*` cannot cross a separator, so the PHI-FREE sibling
+# `ground_truth/seed_summary.json` is still not matched. Mirrors block_phi_read.py's PHI_NAME.
+name_regex='(^|/)(gt\.csv|.*raw_response.*|manifest\.csv|ground_truth/seed(_[^/]*)?/.*|ground_truth/review.*/.*|.*\.part)$'
 
 blocked=()
 for f in "${staged[@]:-}"; do

@@ -122,7 +122,9 @@ def aggregate(rows: list[dict]) -> dict:
     Returns:
         {
           "model_name": <carried from the rows, for Phase 7>,
-          "version": <carried from the rows (D-8.3); "" / None if unset>,
+          "version": <carried from the rows (D-8.3); always non-empty, see Raises>,
+          "verifier_model_name": <carried from the rows; None if no row ran a verifier>,
+          "verifier_version": <carried from the rows; None if no row ran a verifier>,
           "n_images": int,
           "overall": <group stats over all rows>,
           "per_stratum": {stratum: <group stats>, ...},   # sorted by stratum
@@ -132,17 +134,72 @@ def aggregate(rows: list[dict]) -> dict:
     Empty input yields zero counts and None rates throughout — never an exception.
 
     Raises:
-        ValueError: rows come from more than one (model_name, version) pair (D-8.3) — an
-            engine version bump invalidates prior results like a gt.csv change, so a mixed
-            batch must fail loudly rather than silently average across versions.
+        ValueError: any row carries a blank/missing `version` (D-8.4). Checked before the
+            mixed-pair check, which is blind to it: an all-blank batch is one consistent
+            pair. `OCROutput` also rejects a blank version at construction, so this is the
+            backstop for rows assembled by hand rather than by a runner.
+        ValueError: a row ran a verifier (`verifier_elapsed` is not None) but carries a
+            blank/missing `verifier_model_name`/`verifier_version` (D-9.1) — same hole as
+            above, extended to the second model in a gated run. `run_harness` also rejects
+            this at call time; this is the backstop for hand-built rows.
+        ValueError: rows come from more than one (model_name, version, verifier_model_name,
+            verifier_version) tuple (D-8.3, extended by D-9.1) — an engine or verifier
+            version bump invalidates prior results like a gt.csv change, so a mixed batch
+            must fail loudly rather than silently average across versions. This also catches
+            blending a primary-only run with a gated run: one has verifier identity `None`,
+            the other doesn't, so they are never the same tuple.
     """
     if rows:
-        pairs = {(r.get("model_name"), r.get("version")) for r in rows}
-        if len(pairs) > 1:
-            conflicting = sorted(pairs, key=lambda p: (str(p[0]), str(p[1])))
+        # Blank-version check FIRST (D-8.4). The mixed-pair check below cannot catch this:
+        # rows that all carry version "" collapse to ONE pair, so a batch with no version
+        # information at all looks maximally consistent. Counts/indices only — never row
+        # contents — so this message stays PHI-free.
+        blank = [i for i, r in enumerate(rows) if not str(r.get("version") or "").strip()]
+        if blank:
             raise ValueError(
-                "aggregate(): refusing to blend rows from different (model_name, version) "
-                f"pairs: {conflicting}"
+                f"aggregate(): {len(blank)} of {len(rows)} rows carry no engine version "
+                f"(first at row index {blank[0]}). An unversioned row cannot be shown to "
+                "come from the same engine build as its neighbours, and an all-blank batch "
+                "would pass the (model_name, version) consistency check as one pair "
+                "(rule #9)."
+            )
+
+        # Same hole, same fix, for the SECOND model in a gated run (D-9.1). Only rows that
+        # actually ran a verifier are in scope — `verifier_elapsed` (not the identity
+        # fields) is the signal, since a primary-only row legitimately has no verifier
+        # identity at all.
+        blank_verifier = [
+            i
+            for i, r in enumerate(rows)
+            if r.get("verifier_elapsed") is not None
+            and (
+                not str(r.get("verifier_model_name") or "").strip()
+                or not str(r.get("verifier_version") or "").strip()
+            )
+        ]
+        if blank_verifier:
+            raise ValueError(
+                f"aggregate(): {len(blank_verifier)} of {len(rows)} rows ran a verifier but "
+                f"carry no verifier identity (first at row index {blank_verifier[0]}). A "
+                "gated row cannot be shown to come from the same verifier build as its "
+                "neighbours without one, for the same reason an unversioned primary row is "
+                "rejected above."
+            )
+
+        pairs = {
+            (
+                r.get("model_name"),
+                r.get("version"),
+                r.get("verifier_model_name"),
+                r.get("verifier_version"),
+            )
+            for r in rows
+        }
+        if len(pairs) > 1:
+            conflicting = sorted(pairs, key=lambda p: tuple(str(x) for x in p))
+            raise ValueError(
+                "aggregate(): refusing to blend rows from different (model_name, version, "
+                f"verifier_model_name, verifier_version) tuples: {conflicting}"
             )
 
     by_stratum: dict[str, list[dict]] = {}
@@ -156,6 +213,8 @@ def aggregate(rows: list[dict]) -> dict:
     return {
         "model_name": rows[0].get("model_name") if rows else None,
         "version": rows[0].get("version") if rows else None,
+        "verifier_model_name": rows[0].get("verifier_model_name") if rows else None,
+        "verifier_version": rows[0].get("verifier_version") if rows else None,
         "n_images": len(rows),
         "overall": _group_stats(rows),
         "per_stratum": {

@@ -92,6 +92,7 @@ class DoctrRunner(Runner):
     """docTR wired into the fixed harness loop. `run` satisfies `harness.RunFunc` as-is."""
 
     model_name = "doctr"
+    version_source = "doctr"  # `version` must equal doctr.__version__ (contract test)
 
     def __init__(self) -> None:
         # Read from the installed library, never hand-typed (base.py's contract + rule #9).

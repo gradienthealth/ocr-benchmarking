@@ -1,0 +1,75 @@
+# text presence labels - ct_axial
+# PROVENANCE: NOT human-verified. has_text=0 is asserted from Gradient's
+#   designation of ct_axial as the no-text negative control (D-1.2), not from
+#   anyone looking at these frames. Per CLAUDE.md #8, a stratum label nobody has
+#   eyeballed is exactly what invalidated the ct_scout sweep. Any frame here that
+#   turns out to carry text must leave the control set (plan.md #2.3).
+# generated: 2026-08-06 by the plan.md START HERE one-liner
+# has_text = any glyphs at all, NOT a PHI/KEEP judgment. image_id is a hash.
+image_id,has_text
+0137e7aa,0
+0375ae41,0
+07e39d01,0
+093c4638,0
+0ab6c30b,0
+0e34947d,0
+0f5f00ff,0
+10c9c4a7,0
+1d9d7f69,0
+216421a4,0
+2207aaab,0
+23310ec8,0
+2a9d4d73,0
+2b03f308,0
+2b0909a8,0
+2b6e8b6f,0
+32011436,0
+33817b03,0
+398d5b1e,0
+3f348d71,0
+4331fa68,0
+46c76d48,0
+58c7f324,0
+610f41aa,0
+63415a7e,0
+6952a87a,0
+6c7a6fdb,0
+70ffb640,0
+7c2c1c8f,0
+878c207b,0
+87b47312,0
+8f56282e,0
+8fcdf188,0
+912dae09,0
+94b91881,0
+962ace7c,0
+9a958ae8,0
+9c57e04a,0
+9db39031,0
+a8ae94b2,0
+aca97132,0
+b1c711d8,0
+b6937e1e,0
+b6e9221f,0
+b93eca4f,0
+c2eb10eb,0
+c8151e55,0
+caec0cb1,0
+cbdc2d87,0
+cc4d431c,0
+cf9517f5,0
+d0d441a1,0
+d3aeccd6,0
+d7616758,0
+d8df56fd,0
+da5bd446,0
+e1604d51,0
+e19ebf0f,0
+e33cd5d3,0
+e77c1ea1,0
+e7f73318,0
+edd1cc2d,0
+f04d6159,0
+f2650262,0
+f673bde4,0
+f94f4560,0

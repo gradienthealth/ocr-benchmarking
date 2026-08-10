@@ -24,7 +24,50 @@ PHI_EXT = (
     ".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".gif", ".webp",
     ".npy", ".npz",
 )
-PHI_NAME = re.compile(r"(^|/)(gt\.csv|ground_truth.*\.csv|.*raw_response.*)$", re.I)
+# ADD-ONLY (Phase 10b): `*render_backmap*` is the image_id -> SOPInstanceUID/series_uid
+# map written by ground_truth/render.py. It is PHI-adjacent (linkable identifiers) and must
+# never reach Claude. `*render_inputs*` is the human-authored path+frame list, which also
+# holds series UIDs. Both already fall under `ground_truth.*\.csv` at their default paths;
+# these alternatives keep them READ-denied wherever they are put. Nothing above is loosened.
+# KNOWN GAP (pre-existing, same for gt.csv): this list only gates the Read tool. `cat`/
+# `grep` on these files via Bash is caught by §2a only if the path matches an image/DICOM
+# pattern, which a .csv does not. Closing that means widening the Bash patterns for gt.csv
+# too — a separate decision, not a Phase 10b change.
+# ADD-ONLY (Phase 10c / D-10c.8): `ground_truth/seed/<image_id>.json` is the per-image
+# Tesseract seed — it contains the read-back token text, i.e. the PHI itself, same class as
+# gt.csv. The branch is deliberately `ground_truth/seed/.*` (trailing slash REQUIRED) and not
+# `ground_truth/.*\.json`: the sibling `ground_truth/seed_summary.json` is a PHI-free count
+# table Arnav must still be able to read, and a wider pattern would block it and defeat its
+# purpose. `.*$` reaches end-of-string, so the branch satisfies the enclosing `(^|/)(...)$`.
+# Nothing above is loosened.
+# ADD-ONLY (Phase 10d): `ground_truth/review/<image_id>.json` is a human-confirmed GT review
+# record — it holds the confirmed patient-ID/accession token text, i.e. the PHI itself, same
+# class as gt.csv. The branch is `ground_truth/review.*/.*` (a `/` required after `review...`)
+# rather than `ground_truth/.*\.json`: the wider form would also catch the PHI-free
+# `ground_truth/seed_summary.json` sibling and defeat its purpose. This directory-scoped form
+# matches `ground_truth/review/abc123.json` and a future self-agreement round
+# `ground_truth/review_r2/x.json`, but NOT the source files `ground_truth/review_gt.py` or
+# `ground_truth/review_ui.html` (neither has a `/` after `review`/`review_gt`/`review_ui`).
+# Nothing above is loosened.
+# ADD-ONLY (Phase 10d, found in review): the seed branch was `ground_truth/seed/.*`, which
+# covered only the ORIGINAL seed dir. The per-stratum dirs added since — seed_v2, seed_pilot,
+# seed_ct_sc, seed_ct_scout — hold the same read-back token text and `.gitignore:37` already
+# treats them as PHI (`ground_truth/seed_*/`), but the Read hook did not. `seed(_[^/]*)?/`
+# closes that gap. `[^/]*` cannot cross a path separator, so `ground_truth/seed_summary.json`
+# (PHI-FREE per-image counts, which Arnav must still be able to read) stays allowed: there is
+# no `/` after `seed_summary.json`. Nothing above is loosened.
+#
+# `.*\.part` (added 2026-08-09): an interrupted atomic write. `build_gt.write_gt()` stages the
+# FULL gt.csv table at `ground_truth/gt.csv.part` before validating it, and 10d stages review
+# records as `<image_id>.json.<pid>.<tid>.part`. Neither is caught by the branches above —
+# `ground_truth.*\.csv` is `$`-anchored and `.part` is the final extension — so a crashed
+# build leaves a readable full-PHI file behind. A `.part` file is by definition a temp
+# artifact, so gating every one of them costs nothing.
+PHI_NAME = re.compile(
+    r"(^|/)(gt\.csv|ground_truth.*\.csv|.*raw_response.*|.*render_backmap.*|.*render_inputs.*"
+    r"|ground_truth/seed(_[^/]*)?/.*|ground_truth/review.*/.*|.*\.part)$",
+    re.I,
+)
 
 # ---- 2. Bash patterns, grouped by failure mode ----
 # 2a. PHI -> stdout (returns to Claude's context)
@@ -41,6 +84,25 @@ PHI_READ = [
      "printing DICOM pixels/tags/tokens routes PHI into context"),
     (re.compile(r"\b(imshow|Image\.open|display)\b[^\n]*\.(png|jpe?g|tiff?|bmp|dcm)\b", re.I),
      "opening/displaying a rendered image into context"),
+    # ADD-ONLY (Phase 10c / D-10c.8): Bash-side companion to the PHI_NAME branch above. The
+    # literal path segment `ground_truth/seed/` (trailing slash REQUIRED) keeps this narrow —
+    # it cannot match `ground_truth/seed_summary.json` (PHI-free, must stay readable) nor
+    # `ground_truth/seed_tesseract.py` (source). Closes for the seed files the KNOWN GAP noted
+    # above for gt.csv; that gap is left as-is, nothing here is loosened.
+    (re.compile(r"\b(cat|head|tail|less|more|jq|grep|strings|base64)\b[^\n|]*ground_truth/seed/", re.I),
+     "dumping a Tesseract seed file (contains read-back PHI token text) into context"),
+    # ADD-ONLY (Phase 10d): Bash-side companion to the PHI_NAME branch above. The literal path
+    # segment `ground_truth/review/` (trailing slash REQUIRED) keeps this narrow — it cannot
+    # match `ground_truth/review_gt.py` or `ground_truth/review_ui.html` (source, must stay
+    # readable). Nothing above is loosened.
+    (re.compile(r"\b(cat|head|tail|less|more|jq|grep|strings|base64)\b[^\n|]*ground_truth/review[^/\s]*/", re.I),
+     "dumping a review record (contains human-confirmed PHI token text) into context"),
+    # ADD-ONLY (Phase 10d, found in review): Bash companion for the per-stratum seed dirs
+    # (seed_v2, seed_pilot, ...) that the `ground_truth/seed/` literal above never covered.
+    # `[^/\s]*` cannot cross a separator, so `ground_truth/seed_summary.json` (PHI-free) is not
+    # matched — it has no trailing `/`. Nothing above is loosened.
+    (re.compile(r"\b(cat|head|tail|less|more|jq|grep|strings|base64)\b[^\n|]*ground_truth/seed_[^/\s]*/", re.I),
+     "dumping a per-stratum Tesseract seed file (read-back PHI token text) into context"),
 ]
 # 2b. Network egress (could send PHI off the machine / to a non-BAA endpoint)
 EGRESS = [

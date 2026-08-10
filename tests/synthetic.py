@@ -42,6 +42,11 @@ _HARD_NOISE_FRACTION = 0.005
 # PHI-bearing; this constant marks fabricated ones as safe.
 SYNTHETIC_RAW_RESPONSE = {"synthetic": True}
 
+# OCROutput.version is required and must be non-empty (D-8.4), so fabricated outputs need
+# a version too. A deliberately unreal marker: it can never collide with a real engine's
+# version string, so a fixture row can never be mistaken for a measured one.
+SYNTHETIC_VERSION = "0.0.0-synthetic"
+
 
 def _font(size: int) -> ImageFont.FreeTypeFont:
     # Pillow's bundled default font (pinned Pillow==11.1.0) — no system-font
@@ -204,14 +209,26 @@ def mutate_token(text: str) -> str:
     return text[:i] + repl + text[i + 1 :]
 
 
-def perfect_output(gt: list[GTToken], model_name: str = "synthetic-perfect") -> OCROutput:
+def perfect_output(
+    gt: list[GTToken],
+    model_name: str = "synthetic-perfect",
+    version: str = SYNTHETIC_VERSION,
+) -> OCROutput:
     """Every GT token read exactly, at its exact box."""
     words = [OCRWord(text=t.token_text, bbox=t.bbox, confidence=0.99) for t in gt]
-    return OCROutput(words=words, raw_response=SYNTHETIC_RAW_RESPONSE, model_name=model_name)
+    return OCROutput(
+        words=words,
+        raw_response=SYNTHETIC_RAW_RESPONSE,
+        model_name=model_name,
+        version=version,
+    )
 
 
 def misread_output(
-    gt: list[GTToken], index: int = 0, model_name: str = "synthetic-misread"
+    gt: list[GTToken],
+    index: int = 0,
+    model_name: str = "synthetic-misread",
+    version: str = SYNTHETIC_VERSION,
 ) -> OCROutput:
     """Perfect read except the token at `index` has one character wrong."""
     words = [
@@ -222,11 +239,19 @@ def misread_output(
         )
         for i, t in enumerate(gt)
     ]
-    return OCROutput(words=words, raw_response=SYNTHETIC_RAW_RESPONSE, model_name=model_name)
+    return OCROutput(
+        words=words,
+        raw_response=SYNTHETIC_RAW_RESPONSE,
+        model_name=model_name,
+        version=version,
+    )
 
 
 def omission_output(
-    gt: list[GTToken], index: int = 0, model_name: str = "synthetic-omission"
+    gt: list[GTToken],
+    index: int = 0,
+    model_name: str = "synthetic-omission",
+    version: str = SYNTHETIC_VERSION,
 ) -> OCROutput:
     """Perfect read except the token at `index` is not detected at all."""
     words = [
@@ -234,23 +259,43 @@ def omission_output(
         for i, t in enumerate(gt)
         if i != index
     ]
-    return OCROutput(words=words, raw_response=SYNTHETIC_RAW_RESPONSE, model_name=model_name)
+    return OCROutput(
+        words=words,
+        raw_response=SYNTHETIC_RAW_RESPONSE,
+        model_name=model_name,
+        version=version,
+    )
 
 
 def hallucination_output(
-    gt: list[GTToken] | None = None, model_name: str = "synthetic-hallucination"
+    gt: list[GTToken] | None = None,
+    model_name: str = "synthetic-hallucination",
+    version: str = SYNTHETIC_VERSION,
 ) -> OCROutput:
     """All GT tokens read correctly PLUS one invented box. With gt=[] (a blank
     image) the output is a single hallucinated word — the negative-control case."""
     words = [OCRWord(text=t.token_text, bbox=t.bbox, confidence=0.99) for t in gt or []]
     words.append(OCRWord(text="ZZZZ-FAKE", bbox=(500.0, 400.0, 590.0, 424.0), confidence=0.42))
-    return OCROutput(words=words, raw_response=SYNTHETIC_RAW_RESPONSE, model_name=model_name)
+    return OCROutput(
+        words=words,
+        raw_response=SYNTHETIC_RAW_RESPONSE,
+        model_name=model_name,
+        version=version,
+    )
 
 
-def box_free_output(gt: list[GTToken], model_name: str = "synthetic-boxfree") -> OCROutput:
+def box_free_output(
+    gt: list[GTToken],
+    model_name: str = "synthetic-boxfree",
+    version: str = SYNTHETIC_VERSION,
+) -> OCROutput:
     """A VLM-style blob: one text response, no boxes, no confidence."""
     blob = " ".join(t.token_text for t in gt)
     word = OCRWord(text=blob, bbox=None, confidence=None)
     return OCROutput(
-        words=[word], raw_response=SYNTHETIC_RAW_RESPONSE, model_name=model_name, box_free=True
+        words=[word],
+        raw_response=SYNTHETIC_RAW_RESPONSE,
+        model_name=model_name,
+        version=version,
+        box_free=True,
     )

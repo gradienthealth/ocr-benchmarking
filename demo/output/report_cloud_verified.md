@@ -7,7 +7,7 @@
 | Exact version       | cloud-ocr-2026.07-demo         |
 | Run hash            | e83ea9da9cdf                   |
 | Set hash            | 29085d550351                   |
-| Generated at        | 2026-07-31 20:43:19            |
+| Generated at        | 2026-08-04 17:18:34            |
 | Images scored       | 5                              |
 
 ## Headline
@@ -51,7 +51,7 @@ Primary (model) and verifier (re-read) time are reported **separately** — neve
 
 | Timer              | Mean (s) | Median (s) | p95 (s) |
 | ------------------ | -------- | ---------- | ------- |
-| Primary (model)    | 0.0061   | 0.0061     | 0.0062  |
+| Primary (model)    | 0.0061   | 0.0061     | 0.0061  |
 | Verifier (re-read) | 0.0008   | 0.0000     | 0.0070  |
 
 | Cost         | Value     |

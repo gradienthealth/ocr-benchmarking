@@ -161,15 +161,83 @@ def test_no_phi_value_reachable_through_public_api(view):
         name for name in dir(view)
         if not name.startswith("_") and callable(getattr(view, name))
     ]
-    # Sanity: we actually exercised the accessors.
+    # Sanity: we actually exercised the accessors. The two keyed accessors take an
+    # argument, so they cannot be called blind here — they get the same sentinel sweep
+    # in their own tests below, and this assertion is what forces a future arg-taking
+    # accessor to be added there too rather than silently skipped by both.
+    keyed = {"attrs_for_series", "frame_idx_for_series"}
     assert set(public_methods) == {
         "n_series", "modality_counts", "stratum_counts", "vendor_counts",
-        "frame_idx_summary", "n_blank_control_candidates",
+        "frame_idx_summary", "n_blank_control_candidates", *keyed,
     }
+    zero_arg = [name for name in public_methods if name not in keyed]
 
-    blob = " ".join(str(getattr(view, name)()) for name in public_methods)
+    blob = " ".join(str(getattr(view, name)()) for name in zero_arg)
     for sentinel in _PHI_SENTINELS:
         assert sentinel not in blob, f"PHI sentinel leaked through public API: {sentinel}"
 
     # And prove the test is meaningful: whitelisted values DO appear.
     assert "ACME_SCANNER" in blob and "ct_axial" in blob
+
+
+# --- D-10.8: the keyed accessor Phase 10e joins through -----------------------------
+
+
+def test_attrs_for_series_returns_the_categorical_triple(view):
+    assert view.attrs_for_series("1.2.3.FAKE.SERIES.1") == ("ACME_SCANNER", "ct_axial", "CT")
+    assert view.attrs_for_series("1.2.3.FAKE.SERIES.6") == ("ACME_SCANNER", "us", "US")
+
+
+def test_keyed_accessors_return_no_identifier(view):
+    """They take a uid but must never hand one back, nor any other quasi-identifier —
+    three categorical values and one integer, and nothing else."""
+    blob = " ".join(
+        f"{view.attrs_for_series(row[0])} {view.frame_idx_for_series(row[0])}"
+        for row in _FAKE_ROWS
+    )
+    for sentinel in _PHI_SENTINELS:
+        assert sentinel not in blob, f"PHI sentinel leaked through a keyed accessor: {sentinel}"
+    assert "ACME_SCANNER" in blob and "ct_axial" in blob
+
+
+def test_frame_idx_for_series_returns_the_manifest_value(view):
+    # DIAGNOSTIC ONLY — Phase 10e writes the RENDER manifest's frame_idx into gt.csv and
+    # uses this one solely to count how often the two disagree.
+    assert view.frame_idx_for_series("1.2.3.FAKE.SERIES.1") == 10
+    assert view.frame_idx_for_series("1.2.3.FAKE.SERIES.4") == 0
+
+
+def test_frame_idx_for_series_unknown_uid_raises(view):
+    with pytest.raises(KeyError):
+        view.frame_idx_for_series("1.2.3.FAKE.SERIES.NOT_PRESENT")
+
+
+def test_attrs_for_series_unknown_uid_raises(view):
+    # A silent default would put some other series' vendor on a scored gt.csv row.
+    with pytest.raises(KeyError):
+        view.attrs_for_series("1.2.3.FAKE.SERIES.NOT_PRESENT")
+
+
+def test_duplicate_series_uid_raises(tmp_path):
+    # The 10e join is 1:1 or it is wrong.
+    rows = [list(r) for r in _FAKE_ROWS]
+    rows[1][_FAKE_COLUMNS.index("series_uid")] = rows[0][_FAKE_COLUMNS.index("series_uid")]
+    df = pd.DataFrame(rows, columns=_FAKE_COLUMNS)
+    path = tmp_path / "dup_uid.csv"
+    df.to_csv(path, index=False)
+    with pytest.raises(ValueError, match="duplicate series_uid"):
+        load_manifest(path)
+
+
+def test_missing_series_uid_column_raises(tmp_path):
+    df = pd.DataFrame(_FAKE_ROWS, columns=_FAKE_COLUMNS).drop(columns=["series_uid"])
+    path = tmp_path / "no_uid.csv"
+    df.to_csv(path, index=False)
+    with pytest.raises(ValueError, match="series_uid"):
+        load_manifest(path)
+
+
+def test_series_uid_is_not_an_exposed_column():
+    # It is an index key, never data. If it ever becomes a column, ManifestView's
+    # whitelist guard is the thing that would stop noticing.
+    assert "series_uid" not in _EXPOSED_COLUMNS

@@ -1,0 +1,47 @@
+# Human eyeball labels: does this render carry ANY burned-in text?
+# Stratum: ct_secondary_capture, 40-image diagnostic batch (renders/gt_ct_sc).
+# Annotator: Arnav Dhar. Date: 2026-08-06. Method: standalone viewer, whole frame.
+# has_text is "any glyphs at all" (measurements, laterality, machine settings,
+# institution) -- NOT a PHI/KEEP judgment. This is the recall DENOMINATOR for the
+# seeder sweep, not ground truth. No token text is recorded here by design.
+image_id,has_text
+05b11a51,1
+11ab2683,1
+259b2ee1,1
+28c41a03,1
+2cf044cc,1
+30834260,0
+31a50aa2,1
+3942862c,1
+39f6321b,1
+3b6a5614,1
+3c515fdc,0
+3cb8512e,1
+400a405e,1
+402b6919,1
+41849cf4,0
+42beabe4,0
+4ae03db0,1
+4f1b94ca,1
+564c136e,1
+5e5c5e52,1
+65eeda12,0
+6838ec91,1
+685636d6,1
+6861e9ad,1
+898f9221,0
+909741af,1
+93df78de,1
+9a9bd44b,1
+9b625a8f,1
+ae232537,1
+b7554eb3,0
+c82268e6,0
+c9f56d8f,1
+d2d72709,0
+d5ffb1a7,1
+f6f63538,0
+f8ad7c9c,1
+fc7fd07e,1
+fd2eb25d,1
+ff9262e3,1

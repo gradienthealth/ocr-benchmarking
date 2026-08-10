@@ -101,6 +101,8 @@ def run_harness(
     *,
     allowlist: set[str],
     verifier_func: Optional[VerifierFunc] = None,
+    verifier_model_name: Optional[str] = None,
+    verifier_version: Optional[str] = None,
     conf_threshold: Optional[float] = None,
     iou: float = 0.5,
 ) -> dict:
@@ -108,13 +110,42 @@ def run_harness(
 
     Per image: time `run_func` (and only `run_func`), optionally re-read sub-threshold words
     with the verifier (timed separately), estimate cost from dimensions, match to
-    `ground_truth[img.id]`, score, then aggregate per-stratum + overall.
+    `ground_truth.get(img.id, [])`, score, then aggregate per-stratum + overall.
+
+    `images` — not `ground_truth` — is the authoritative set of what gets run. An image with
+    no entry in `ground_truth` is treated as having zero GT tokens, which is precisely the
+    confirmed-blank negative control: `load_gt()` omits blank image_ids rather than mapping
+    them to `[]`, so every hallucination-floor frame arrives here as a missing key.
 
     The verifier arm is active only when BOTH `verifier_func` and `conf_threshold` are given.
     `stratum`/`modality`/`vendor`/`image_id`/`model_name` are stamped onto each row from the
     authoritative `ImageRef`/`OCROutput` (not the GT-derived values, which are `None` on blank
     controls).
+
+    When the arm is active, `verifier_model_name`/`verifier_version` are REQUIRED and must be
+    non-blank — the exact same rule #9 protection already applied to the primary engine
+    (`OCROutput.version`, D-8.4), extended to the second model in a gated run. Without this, two
+    gated runs whose verifier silently changed between them (a version bump, a swapped model)
+    would carry identical `(model_name, version)` and merge in `aggregate()` with nothing to
+    flag it — the primary engine's identity says nothing about the verifier's.
+
+    Raises:
+        ValueError: `verifier_func` + `conf_threshold` are both given but `verifier_model_name`
+            or `verifier_version` is missing/blank.
     """
+    verifier_active = verifier_func is not None and conf_threshold is not None
+    if verifier_active:
+        blank_name = verifier_model_name is None or not verifier_model_name.strip()
+        blank_version = verifier_version is None or not verifier_version.strip()
+        if blank_name or blank_version:
+            raise ValueError(
+                "run_harness(): the verifier arm is active (verifier_func + conf_threshold "
+                "given) but verifier_model_name/verifier_version is missing or blank. Source "
+                "the verifier's exact version the same way a runner sources its own (never "
+                "hand-typed) — an unversioned gated run cannot be shown to come from the same "
+                "verifier build as its neighbours."
+            )
+
     rows = []
     for img in images:
         t0 = perf_counter()
@@ -128,7 +159,13 @@ def run_harness(
             verifier_elapsed = perf_counter() - tv  # timed separately, AFTER elapsed is frozen
 
         cost = estimate_cost(img, run_func)
-        matched = match(out, ground_truth[img.id], iou)
+        # `.get(..., [])`, not `[...]`: a confirmed-blank negative control has ZERO rows in
+        # gt.csv, so `load_gt()` omits its image_id entirely (gt_schema.load_gt docstring) —
+        # absent, not empty. Indexing would KeyError on exactly the frames the hallucination
+        # floor is measured on. The default lives HERE and not as a `defaultdict` in the
+        # loader: there, a mistyped image_id would silently materialise empty ground truth
+        # and score as a free negative-control pass; here, `images` is the authoritative set.
+        matched = match(out, ground_truth.get(img.id, []), iou)
         row = score(matched, allowlist, elapsed=elapsed, cost=cost)
 
         # Authoritative stamp (CLAUDE.md rule #7): overrides score()'s GT-derived values,
@@ -140,6 +177,8 @@ def run_harness(
         row["model_name"] = out.model_name
         row["version"] = out.version
         row["verifier_elapsed"] = verifier_elapsed
+        row["verifier_model_name"] = verifier_model_name if verifier_active else None
+        row["verifier_version"] = verifier_version if verifier_active else None
         rows.append(row)
 
     return aggregate(rows)

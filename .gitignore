@@ -17,9 +17,49 @@
 # Ground truth + annotation exports (contain PHI token text)
 ground_truth/gt.csv
 ground_truth/*.csv
+# Pre-validation candidates and interrupted atomic writes. `build_gt.write_gt()` writes the
+# FULL gt.csv table to `ground_truth/gt.csv.part` before validating it, and 10d's record
+# writer writes `<image_id>.json.<pid>.<tid>.part` — both hold PHI, and NEITHER is matched by
+# the `ground_truth/*.csv` or `ground_truth/review/` rules (`.part` is the final extension,
+# and a killed process leaves the file behind). Unsuffixed `*.part` so any future atomic
+# writer is covered the day it is written, not the day someone notices.
+*.part
+# Phase 10b sidecars, spelled out even though ground_truth/*.csv already covers them at
+# their default paths: the back-map is the image_id -> SOPInstanceUID/series_uid link and
+# the input list holds series UIDs + local paths. Both are PHI-adjacent wherever they live.
+**/render_backmap*.csv
+**/render_inputs*.csv
 **/raw_response*
 label-studio*/
 label_studio*/
+# Phase 10c / D-10c.8: Tesseract seed output. `ground_truth/seed/<image_id>.json` holds the
+# read-back token text for each image — that IS the PHI, same class as gt.csv. Scoped to the
+# `seed/` directory ONLY, never `ground_truth/*.json`, because the sibling summary must stay
+# readable. NOTE (see the warning further down): git has no inline comments — every comment
+# here is on its own line.
+ground_truth/seed/
+# Per-stratum seed dirs from diagnostic runs (e.g. ground_truth/seed_ct_scout/) hold the same
+# read-back token text and are the same class of PHI. The trailing slash matches DIRECTORIES
+# only, so the PHI-free ground_truth/seed_summary.json file is not caught by this rule.
+ground_truth/seed_*/
+# `seed_summary.json` is PHI-free (per-image counts only) so Arnav can still open it, but it
+# is regenerable output and a per-image count table is not something to publish — ignore it
+# as a build artifact, not as PHI (Phase 10c / D-10c.8).
+ground_truth/seed_summary.json
+# Phase 10d: ground_truth/review/<image_id>.json holds the human-confirmed token text —
+# that IS the PHI, same class as gt.csv. The existing `ground_truth/*.csv` rule does NOT
+# cover .json, so this rule is required, not redundant. Directory-scoped (trailing slash)
+# so the PHI-free ground_truth/seed_summary.json sibling stays readable. review_* covers a
+# future self-agreement round (ground_truth/review_r2/).
+ground_truth/review/
+ground_truth/review_*/
+
+# Phase 10c / D-10c.2b: the tessdata_best language model Arnav downloads locally and passes
+# via --tessdata-dir. Not PHI — a ~15MB upstream binary blob that does not belong in git.
+# Its identity is already pinned the right way: the seeder records `traineddata_sha256` in
+# every seed's provenance, so the model is committed by hash, not by content.
+tessdata_best/
+*.traineddata
 
 # Bulk data dirs / renders / caches
 data/
@@ -27,6 +67,14 @@ renders/
 crops/
 cache/
 results/
+# scripts/tag_census.py staging dir for downloaded series tars (PHI). NOTE: git has no
+# inline comments — a trailing `# ...` becomes part of the pattern and the rule silently
+# matches nothing, so every comment here must be on its own line.
+census_tars/
+# scripts/download_series_tars.py destination for the Step 3 series tars (PHI). Covered by
+# *.tar already; the directory rule is here so an unexpected non-.tar file landing in it
+# (a partial download, a gcloud temp file) cannot be committed either.
+series_tars/
 
 # Synthetic test fixtures: ignore generated images, keep the regenerator (D-0.3)
 tests/fixtures/
@@ -45,6 +93,11 @@ __pycache__/
 # Commit the *hash* of gt.csv, never its contents.
 !ground_truth/gt.csv.sha256
 
+# text_presence_*.csv = image_id + has_text boolean, PHI-free by construction. Negated so the
+# recall denominator lives in git (CLAUDE.md §8: a stratum with no text-bearing images must be
+# visible, or its recall reads a meaningless 100%).
+!ground_truth/text_presence_*.csv
+
 # NOTE: commit the *hash* of gt.csv, never its contents.
 # manifest.csv contains quasi-identifiers (dates, pseudonyms) — keep it out of
 # git unless your team has explicitly classified it as shareable.
@@ -54,9 +107,26 @@ manifest.csv
 # identifiers, Limited-Data-Set grade). Same class as manifest.csv — never commit.
 source_paths.txt
 
+# gt_sample_*.csv = a stratified sub-manifest (scripts/build_gt_sample.py). Same
+# columns as manifest.csv, so same class — never commit. Commit the printed
+# sample_sha256 in the plan/run metadata instead, which is what pins the set.
+gt_sample_*.csv
+# gt_pilot_*.csv = the same sub-manifest shape under a different name (the 10c/10d
+# pilot draw). It carries series_uid, study_date and institution_name, so it is the
+# same Limited-Data-Set class as manifest.csv — the gt_sample_*.csv rule above does
+# NOT match this filename, which left gt_pilot_v1.csv committable until 2026-08-09.
+gt_pilot_*.csv
+
+# seed_summary*.json = PHI-free per-image count tables, ignored for the same reason
+# as ground_truth/seed_summary.json above: regenerable build output, and a per-image
+# count table is not something to publish. The exact-name rule above missed the
+# per-stratum variants (seed_summary_v2.json, _pilot, _ct_axial, _ct_scout).
+ground_truth/seed_summary*.json
+
 # ---- NOT FOR THE PUBLIC REPO (gradienthealth/ocr-benchmarking) ----
 # Personal working docs: internal planning, decision log, and learning journal.
 plan.md
+next-steps.md
 insights.md
 diff-update.md
 

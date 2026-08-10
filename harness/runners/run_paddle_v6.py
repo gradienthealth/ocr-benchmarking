@@ -43,8 +43,9 @@ detection confidence is genuinely unavailable without bypassing the pipeline (an
 postprocess → crop → CRNN chain). PP-OCR also scores a whole text line, not a word, so every
 word this runner emits carries **its parent line's** recognition score. Consequences:
 - This is the same *domain* as the docTR runner's confidence (also recognition), so a
-  `conf_threshold` is broadly comparable between docTR and PP-OCRv6 — unlike Surya 2, whose
-  score is a mean per-token decode probability (CLAUDE.md §4).
+  `conf_threshold` is broadly comparable between docTR and PP-OCRv6. It is NOT comparable to a
+  generative arm's score (a mean per-token decode probability) — never carry a threshold across
+  those two families (CLAUDE.md §4).
 - It is a per-line score on a per-word field: words on a line are not independently scored, so
   a single bad word in an otherwise clean line will not stand out by confidence alone. Keep that
   in mind when tuning the verifier's abstain threshold (D-11.2).
@@ -102,6 +103,7 @@ class PaddleV6Runner(Runner):
     """PP-OCRv6_medium wired into the fixed harness loop. `run` satisfies `RunFunc` as-is."""
 
     model_name = "pp-ocrv6_medium"
+    version_source = "paddleocr"  # `version` must equal paddleocr.__version__ (contract test)
 
     def __init__(self) -> None:
         # Read from the installed library, never hand-typed (base.py's contract + rule #9).

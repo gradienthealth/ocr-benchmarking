@@ -7,7 +7,7 @@
 | Exact version       | v1.0.1              |
 | Run hash            | b3622ee330fc        |
 | Set hash            | a18e1b320476        |
-| Generated at        | 2026-07-31 20:43:19 |
+| Generated at        | 2026-08-04 17:18:34 |
 | Images scored       | 3                   |
 
 ## Headline
@@ -47,7 +47,7 @@ Primary (model) and verifier (re-read) time are reported **separately** — neve
 
 | Timer              | Mean (s) | Median (s) | p95 (s) |
 | ------------------ | -------- | ---------- | ------- |
-| Primary (model)    | 2.6613   | 1.4520     | 8.0389  |
+| Primary (model)    | 2.6275   | 1.4699     | 7.9062  |
 | Verifier (re-read) | —        | —          | —       |
 
 | Cost         | Value     |

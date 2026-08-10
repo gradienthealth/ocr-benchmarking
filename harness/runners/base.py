@@ -39,6 +39,22 @@ class Runner(ABC):
     model_name: str
     version: str
 
+    version_source: str | None = None
+    # Dotted module path whose `__version__` IS the value of `version` — e.g. "doctr".
+    # The shared contract test imports this module and asserts the two agree, so the
+    # "never hand-type a version" rule (rule #9) is enforced for EVERY registered runner
+    # instead of only the ones someone wrote a per-engine test for.
+    #
+    # `None` means "not sourced from an installed library" and is reserved for non-engine
+    # test doubles. It is not a quiet escape hatch: the contract test requires any runner
+    # declaring None to also appear in an explicit exemption list in the test file, so
+    # opting out is a visible, reviewable edit rather than a default.
+    #
+    # NOT a second source of truth in the D-8.2 sense: nothing in the harness ever reads
+    # `version_source` to make a decision — only the test reads it, to cross-check the
+    # value the runner already set. Two values that must agree, verified once, not two
+    # values that different code paths might each believe.
+
     @abstractmethod
     def run(self, image_ref: "ImageRef") -> OCROutput:
         """Native engine output -> OCRWord/OCROutput. Boxes in pixels of the fed image."""
