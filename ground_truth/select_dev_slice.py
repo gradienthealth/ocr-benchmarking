@@ -36,14 +36,15 @@ already done for the scored set.
    8 mg_2d                               sparse, and the highest-invention stratum measured
                                          (99.6%) — a threshold that quiets it matters
    2 ct_secondary_capture                vendor overlay glyphs, single-char `L`/`R` in scope
-   4 ct_axial (blank controls)           THE INVENTION FLOOR. Not optional: tuning a
+   2 ct_scout + 2 mg_tomo (blanks)       THE INVENTION FLOOR. Not optional: tuning a
                                          threshold on a set with no blank frames optimizes
                                          recall against noise with nothing to catch it —
                                          the `ct_scout` failure (CLAUDE.md §8).
 
-`ct_scout` and `mg_tomo` are excluded from the default quotas: `gt_v1` found ZERO
-text-bearing images in either, so they have no recall denominator and would contribute
-nothing a threshold could be tuned against.
+The blanks are NOT `ct_axial`. gt_v1 uses all 66 of the manifest's 66 ct_axial series, so
+none are left, and drawing from it would mean tuning against the scored set. `ct_scout` and
+`mg_tomo` both returned zero text-bearing images in gt_v1, which is what makes them useless
+as tuning signal and exactly right as an invention floor — see `BLANK_CONTROL_STRATA`.
 
 DETERMINISM
 ---------------------------------------------------------------------------------
@@ -70,6 +71,20 @@ from pathlib import Path
 # the five columns it needs, and never prints a UID.
 MANIFEST_COLUMNS = ("series_uid", "strata", "manufacturer", "modality", "number_of_frames")
 
+# Strata drawn as BLANK CONTROLS — the dev slice's invention floor.
+#
+# NOT `ct_axial`, which is Gradient's designated no-text control stratum and the source of
+# gt_v1's floor. Measured 2026-08-10: the manifest holds 66 ct_axial series and gt_v1 uses
+# all 66, so there are ZERO unused ones. Reusing them here would also mean tuning thresholds
+# against frames that are inside the scored set — the one thing D-13.4 exists to prevent,
+# and it would contaminate the headline hallucination floor specifically.
+#
+# `ct_scout` and `mg_tomo` are the substitutes: both returned ZERO text-bearing images in
+# gt_v1 (ct_scout's absence of burned-in text is the documented 2026-08-06 finding), and
+# neither is consumed by gt_v1's negative control. Two independent sources rather than one,
+# so if a human finds text in one of them the dev slice still has a floor.
+BLANK_CONTROL_STRATA: tuple[str, ...] = ("ct_scout", "mg_tomo")
+
 # Stratum -> images to draw. See the module docstring for the reasoning behind each.
 DEFAULT_QUOTAS: dict[str, int] = {
     "us_ge": 3,
@@ -80,10 +95,9 @@ DEFAULT_QUOTAS: dict[str, int] = {
     "us_sonosite": 1,
     "mg_2d": 8,
     "ct_secondary_capture": 2,
-    "ct_axial": 4,
+    "ct_scout": 2,
+    "mg_tomo": 2,
 }
-
-BLANK_CONTROL_STRATUM = "ct_axial"
 
 
 class SelectionError(RuntimeError):
@@ -203,12 +217,16 @@ def build_summary(report: dict[str, dict[str, int]], chosen: list[dict[str, str]
         add(f"  {vendor:<24} {n:>4}")
     add("")
 
-    controls = sum(1 for r in chosen if r["strata"] == BLANK_CONTROL_STRATUM)
-    add(f"blank controls drawn: {controls}")
+    controls = sum(1 for r in chosen if r["strata"] in BLANK_CONTROL_STRATA)
+    add(f"blank controls drawn: {controls}  (from {', '.join(BLANK_CONTROL_STRATA)})")
     if controls == 0:
-        add("  WARNING no ct_axial blanks in this slice. Tuning a threshold on a set with no")
+        add("  WARNING no blank frames in this slice. Tuning a threshold on a set with no")
         add("  blank frames optimizes recall against noise with no invention floor to catch")
-        add("  it — the ct_scout failure (CLAUDE.md §8). Add a ct_axial quota before running.")
+        add("  it — the ct_scout failure (CLAUDE.md §8). Add a quota from")
+        add(f"  {list(BLANK_CONTROL_STRATA)} before running the sweep.")
+    else:
+        add("  A human must confirm these really are blank. They are the invention floor, so")
+        add("  a frame with text in it silently turns the floor into a recall measurement.")
     if short:
         add("")
         add(f"NOTE short on {short} — the manifest had fewer unexcluded candidates than the")

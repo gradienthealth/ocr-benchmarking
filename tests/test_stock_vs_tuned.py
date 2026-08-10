@@ -28,6 +28,7 @@ from experiments.sweep_stock_vs_tuned import (
     stratum_regressions,
 )
 from ground_truth.select_dev_slice import (
+    BLANK_CONTROL_STRATA,
     DEFAULT_QUOTAS,
     SelectionError,
     build_summary,
@@ -540,13 +541,28 @@ def test_a_multi_vendor_stratum_is_split_across_vendors():
 
 def test_the_default_quotas_include_blank_controls():
     """No blanks -> no invention floor -> tuning optimizes recall against noise (§8)."""
-    assert DEFAULT_QUOTAS.get("ct_axial", 0) > 0
+    assert sum(DEFAULT_QUOTAS.get(s, 0) for s in BLANK_CONTROL_STRATA) > 0
 
 
-def test_the_default_quotas_skip_the_strata_with_no_text_bearing_images():
-    """`ct_scout` and `mg_tomo` had ZERO text-bearing images in gt_v1 — nothing to tune on."""
-    assert "ct_scout" not in DEFAULT_QUOTAS
-    assert "mg_tomo" not in DEFAULT_QUOTAS
+def test_the_blank_controls_are_not_drawn_from_ct_axial():
+    """Measured 2026-08-10: gt_v1 uses all 66 of the manifest's 66 ct_axial series.
+
+    Zero are left, so a ct_axial quota can only come up SHORT — and if any did exist,
+    drawing one would tune against a frame inside the scored set and contaminate the
+    headline hallucination floor, which is exactly what D-13.4 forbids.
+    """
+    assert "ct_axial" not in BLANK_CONTROL_STRATA
+    assert "ct_axial" not in DEFAULT_QUOTAS
+
+
+def test_the_blank_strata_are_the_ones_with_no_text_bearing_images():
+    """`ct_scout` and `mg_tomo` returned ZERO text-bearing images in gt_v1.
+
+    That makes them useless as tuning signal and exactly right as an invention floor. Two
+    of them, not one, so a human finding text in one does not wipe out the floor.
+    """
+    assert set(BLANK_CONTROL_STRATA) == {"ct_scout", "mg_tomo"}
+    assert len(BLANK_CONTROL_STRATA) >= 2
 
 
 def test_the_summary_names_no_identifier(tmp_path):
@@ -559,7 +575,7 @@ def test_the_summary_names_no_identifier(tmp_path):
 def test_the_summary_warns_when_a_slice_has_no_blank_controls(tmp_path):
     chosen, report = draw(ROWS, set(), {"us_ge": 3}, seed="t")
     summary = build_summary(report, chosen, len(ROWS), 0, "t", tmp_path / "inputs.csv")
-    assert "no ct_axial blanks" in summary
+    assert "no blank frames in this slice" in summary
 
 
 def test_inputs_csv_matches_render_pys_expected_header(tmp_path):
