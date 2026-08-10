@@ -130,6 +130,17 @@ class ManifestView:
         # there so `attrs_for_series` can do the 10e join. It is an index, never a column,
         # so the guard above still governs everything that is retained as data. A view
         # built with some other index simply has no usable `attrs_for_series`.
+        # Defensive, same spirit as the column guard: `attrs_for_series` is a `.loc` lookup,
+        # and on a duplicated index `.loc` returns a DataFrame instead of a row — so
+        # `str(row["vendor"])` would yield a multi-line Series REPR, which validate_gt happily
+        # accepts (vendor/stratum/modality are free-form strings) and which would be frozen
+        # into gt.csv. `load_manifest` already rejects duplicate series_uid; this closes the
+        # same hole for a view built by any other path.
+        if not frame.index.is_unique:
+            raise ValueError(
+                "ManifestView refuses a non-unique index: attrs_for_series() would return a "
+                "DataFrame, not a row, and write a Series repr into gt.csv"
+            )
         # .copy() so the view owns its data: a plain column selection is a slice of the
         # caller's DataFrame, and a later write through that caller would mutate what is
         # meant to be a read-only projection.

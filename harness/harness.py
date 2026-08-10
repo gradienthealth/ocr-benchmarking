@@ -110,7 +110,12 @@ def run_harness(
 
     Per image: time `run_func` (and only `run_func`), optionally re-read sub-threshold words
     with the verifier (timed separately), estimate cost from dimensions, match to
-    `ground_truth[img.id]`, score, then aggregate per-stratum + overall.
+    `ground_truth.get(img.id, [])`, score, then aggregate per-stratum + overall.
+
+    `images` — not `ground_truth` — is the authoritative set of what gets run. An image with
+    no entry in `ground_truth` is treated as having zero GT tokens, which is precisely the
+    confirmed-blank negative control: `load_gt()` omits blank image_ids rather than mapping
+    them to `[]`, so every hallucination-floor frame arrives here as a missing key.
 
     The verifier arm is active only when BOTH `verifier_func` and `conf_threshold` are given.
     `stratum`/`modality`/`vendor`/`image_id`/`model_name` are stamped onto each row from the
@@ -154,7 +159,13 @@ def run_harness(
             verifier_elapsed = perf_counter() - tv  # timed separately, AFTER elapsed is frozen
 
         cost = estimate_cost(img, run_func)
-        matched = match(out, ground_truth[img.id], iou)
+        # `.get(..., [])`, not `[...]`: a confirmed-blank negative control has ZERO rows in
+        # gt.csv, so `load_gt()` omits its image_id entirely (gt_schema.load_gt docstring) —
+        # absent, not empty. Indexing would KeyError on exactly the frames the hallucination
+        # floor is measured on. The default lives HERE and not as a `defaultdict` in the
+        # loader: there, a mistyped image_id would silently materialise empty ground truth
+        # and score as a free negative-control pass; here, `images` is the authoritative set.
+        matched = match(out, ground_truth.get(img.id, []), iou)
         row = score(matched, allowlist, elapsed=elapsed, cost=cost)
 
         # Authoritative stamp (CLAUDE.md rule #7): overrides score()'s GT-derived values,

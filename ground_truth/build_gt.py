@@ -4,16 +4,14 @@
 >>> ARNAV RUNS THIS. Claude never reads `gt.csv`, a review record, a render, a back-map, or
 >>> a row of `manifest.csv`. The PHI-free summary is the only thing that comes back.
 
-    .venv/bin/python ground_truth/build_gt.py \
-        --set      renders/v2:ground_truth/seed_v2 \
-        --groups   ground_truth/seed_groups_v2.csv \
-        --backmap  ground_truth/render_backmap_v2.csv \
-        --manifest manifest.csv \
-        --drawn    gt_sample_v2.csv
+    .venv/bin/python ground_truth/build_gt.py --set renders/v2:ground_truth/seed_v2 --groups ground_truth/seed_groups_v2.csv --backmap ground_truth/render_backmap_v2.csv --manifest manifest.csv --drawn gt_sample_v2.csv --text-presence-name text_presence_v2.csv
+
+(One line on purpose — a backslash-continued paste mangles the flags into escaped spaces.)
 
 Every input is an explicit argument. There are five `render_backmap*.csv` files in this repo
 and picking the wrong one mislabels every row in the artifact everything else is scored
-against — so nothing here is defaulted to "the obvious one".
+against — so nothing here is defaulted to "the obvious one". `--text-presence-name` is in
+that set too: it names a COMMITTED per-scope artifact this build overwrites in place.
 
 WHAT THIS WRITES
 ---------------------------------------------------------------------------------
@@ -138,11 +136,23 @@ def read_render_manifests(specs: list[str]) -> dict[str, dict[str, int]]:
         for row in rows:
             # load_pairs() has already rejected a duplicate image_id whose pixels differ,
             # so a repeat here is the same image and its geometry is the same too.
-            out[row["image_id"]] = {
-                "frame_idx": int(row["frame_idx"]),
-                "w": int(row["w"]),
-                "h": int(row["h"]),
-            }
+            image_id = row["image_id"]
+            try:
+                geometry = {
+                    "frame_idx": int(row["frame_idx"]),
+                    "w": int(row["w"]),
+                    "h": int(row["h"]),
+                }
+            except (TypeError, ValueError):
+                # Converted, not propagated: `int("...")` puts the OFFENDING VALUE in its
+                # message, and main() prints ValueError messages verbatim. On a malformed or
+                # column-shifted manifest that value can be a field this module must never
+                # print. The image_id is hashed and safe; the value is dropped.
+                raise BuildError(
+                    f"{path}: image_id {image_id} has a non-integer frame_idx/w/h "
+                    "(value withheld — an exception message can quote a field value)"
+                ) from None
+            out[image_id] = geometry
     return out
 
 
@@ -281,7 +291,17 @@ def build_rows(
         tokens = record["tokens"]
         has_text[image_id] = bool(tokens)
         for token in tokens:
-            x0, y0, x1, y1 = token["box"]
+            try:
+                x0, y0, x1, y1 = token["box"]
+                coords = [_num(x0), _num(y0), _num(x1), _num(y1)]
+            except (TypeError, ValueError):
+                # Same reason as read_render_manifests: `float("...")` quotes the value it
+                # choked on, and a hand-edited or column-shifted record can put token text
+                # where a coordinate belongs. Only the hashed image_id is printed.
+                raise BuildError(
+                    f"image_id {image_id} has a token box that is not four numbers "
+                    "(value withheld — an exception message can quote token text)"
+                ) from None
             rows.append([
                 image_id,
                 series_uid,
@@ -292,7 +312,7 @@ def build_rows(
                 # RAW. No strip, no case fold, no Unicode fiddling — normalize() is frozen
                 # and applied at match time; doing it here double-normalizes the yardstick.
                 token["text"],
-                _num(x0), _num(y0), _num(x1), _num(y1),
+                *coords,
                 token["label"],
             ])
     return rows, has_text
@@ -335,18 +355,30 @@ def write_gt(out: Path, rows: list[list[str]], image_sizes: dict[str, tuple[int,
     checked against 10a's frozen spec, and `os.replace`d into position only if it is clean.
     A failed build therefore cannot leave a half-valid `gt.csv` sitting where Phase 13 would
     later hash it.
+
+    The candidate is the FULL PHI table under a name the `ground_truth/*.csv` rules do not
+    match (`.part` is the final extension), so `finally` removes it on EVERY exit that is not
+    the successful `os.replace` — a validation refusal, a raising validator, a full disk, a
+    KeyboardInterrupt. `*.part` is separately gitignored, deny-listed and blocked by the
+    PROJECT PHI hook and the pre-commit hook (2026-08-09); this is the layer that keeps it
+    from existing in the first place. SIGKILL and power loss still leave it behind — hence
+    the other layers. NOT yet in the managed root-owned hook: `/etc/claude-code/` does not
+    currently exist on this VM, and whoever restores it must add `.*\\.part` there too (that
+    is the copy that survives `clauded`).
     """
     part = out.with_suffix(out.suffix + ".part")
-    write_csv(part, COLUMNS, rows)
-    report = validate_gt(part, image_sizes)
-    if not report.ok:
+    try:
+        write_csv(part, COLUMNS, rows)
+        report = validate_gt(part, image_sizes)
+        if not report.ok:
+            # report.summary() is PHI-free by construction (codes + column names, no values).
+            raise BuildError(
+                "REFUSING TO BUILD — the generated rows violate the frozen 10a spec.\n"
+                "No gt.csv was written.\n\n" + report.summary()
+            )
+        os.replace(part, out)  # the one exit where `part` is gone because it MOVED
+    finally:
         part.unlink(missing_ok=True)
-        # report.summary() is PHI-free by construction (codes + column names, no values).
-        raise BuildError(
-            "REFUSING TO BUILD — the generated rows violate the frozen 10a spec.\n"
-            "No gt.csv was written.\n\n" + report.summary()
-        )
-    os.replace(part, out)
     return sha256_file(out)
 
 
@@ -427,6 +459,10 @@ def build_summary(ctx: dict) -> str:
     add(f"gt.csv sha256      {ctx['gt_hash']}")
     add(f"gt_set.sha256      {ctx['set_hash']}")
     add("                   (scope, not contents — a blank image changes this one only)")
+    # Named, because it is the recall denominator for THIS scope and it is a committed file
+    # that a build overwrites in place. A summary that does not name it gives no way to tell
+    # afterwards which text_presence_*.csv this run rewrote.
+    add(f"text presence      {ctx['presence_name']}  (recall denominator for this set)")
     add("")
 
     add("-- scored set ------------------------------------------------------------")
@@ -517,7 +553,37 @@ def build_summary(ctx: dict) -> str:
 # --- main -----------------------------------------------------------------------------
 
 
+def _check_presence_name(name: str, out: Path) -> None:
+    """`--text-presence-name` must be a bare filename that clobbers none of the artifacts.
+
+    It is joined to `--out`'s parent, so a path escapes the ground_truth dir the rails are
+    written around; the empty string resolves to the DIRECTORY (an `IsADirectoryError` whose
+    message main() withholds); and `gt.csv`/`gt.csv.sha256`/`gt_set.sha256`/`gt_summary.txt`
+    would each be overwritten AFTER being written, leaving a committed hash that no longer
+    matches the file it names.
+    """
+    reserved = {out.name, out.name + ".sha256", "gt_set.sha256", "gt_summary.txt"}
+    if not name or Path(name).name != name:
+        raise BuildError(
+            f"--text-presence-name must be a non-empty bare filename, got {name!r} — it is "
+            "written next to --out, never at a path of its own"
+        )
+    if name in reserved:
+        raise BuildError(
+            f"--text-presence-name {name!r} collides with an artifact this build writes "
+            f"({sorted(reserved)}) — it would overwrite it after the fact and leave a "
+            "committed hash that does not match the file it names"
+        )
+
+
 def build(args: argparse.Namespace) -> str:
+    # FIRST, before a single byte is written. This validates nothing the build computes, and
+    # a check that runs after write_gt() is worse than useless: gt.csv and BOTH hash files
+    # would already be replaced, and the corrected re-run would then read its own new hash as
+    # `prev_gt`, find it unchanged, and print NO invalidation banner — silently losing the one
+    # loud signal that the frozen artifact moved (CLAUDE.md rule #8).
+    _check_presence_name(args.text_presence_name, args.out)
+
     groups = load_groups(args.groups)
     # 10d's own loader: it validates the renders/seed pairing and already refuses a
     # duplicate image_id whose pixels or seed provenance differ.
@@ -587,6 +653,7 @@ def build(args: argparse.Namespace) -> str:
         "invalidated": invalidated,
         "gt_hash": gt_hash,
         "set_hash": set_hash,
+        "presence_name": args.text_presence_name,
         "drawn": count_drawn(args.drawn),
         "rendered": len(scored),
         # Counted, not asserted: the gate makes deferred/missing provably 0, and printing
@@ -682,7 +749,15 @@ def make_parser() -> argparse.ArgumentParser:
     ap.add_argument("--out", type=Path, default=DEFAULT_OUT)
     ap.add_argument("--review-dir", type=Path, default=DEFAULT_REVIEW_DIR)
     ap.add_argument("--round2-dir", type=Path, default=DEFAULT_ROUND2_DIR)
-    ap.add_argument("--text-presence-name", default="text_presence_v2.csv")
+    # required, NOT defaulted: this names a COMMITTED, scope-specific artifact that the build
+    # overwrites in place. A default of "text_presence_v2.csv" meant that building the pilot —
+    # or the 199 -> 307 ladder step — while forgetting the flag would silently replace the
+    # recall denominator that 199 images are scored against with a different scope's rows.
+    # Same reasoning as --set/--groups/--backmap/--manifest: picking the wrong one mislabels
+    # everything downstream, so it is spelled out every time.
+    ap.add_argument("--text-presence-name", required=True, metavar="NAME",
+                    help="filename (not a path) for this set's image_id,has_text CSV, "
+                         "written next to --out; e.g. text_presence_v2.csv")
     return ap
 
 

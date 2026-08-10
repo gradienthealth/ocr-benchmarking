@@ -35,7 +35,8 @@ production numbers. Flag that wherever Phase 9 latency is reported.
 ⚠️ **Confidence is RECOGNITION confidence, per detected region.** `readtext` returns the
 recognizer's (CTC decoder) score, not a detection score. Same *domain* as the docTR and
 PP-OCRv6 runners' confidence, so a `conf_threshold` is broadly comparable across the three
-local arms — unlike Surya 2, whose score is a mean per-token decode probability (CLAUDE.md §4).
+local arms. It is NOT comparable to a generative arm's score (a mean per-token decode
+probability), so never carry a `conf_threshold` across those two families (CLAUDE.md §4).
 
 ⚠️ **Two measured geometry behaviors (2026-07-31), recorded here, NOT tuned around:**
 - *Boxes are vertically inflated.* On synthetic fixtures EasyOCR returns regions ~1.9x taller

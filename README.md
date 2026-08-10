@@ -41,7 +41,7 @@ Requires Python ≥ 3.12 (D-0.2).
 - [ ] **Phase 6** — Harness loop + cost + aggregate
 - [ ] **Phase 7** — Report (stratified tables + charts) — *core complete, proven on synthetic*
 - [ ] **Phase 8** — Runner base class
-- [ ] **Phase 9** — Local runners: docTR, PP-OCRv6_medium, EasyOCR (floor), Surya 2 (license-gated)
+- [ ] **Phase 9** — Local runners: docTR, PP-OCRv6_medium, EasyOCR (floor)
 - [ ] **Phase 10** 🔴 — Ground-truth pipeline (human runs; produces frozen `gt.csv`)
 - [ ] **Phase 11** 🔴 — Verifier arm (self-hosted Qwen3-VL-8B-Instruct / RolmOCR)
 - [ ] **Phase 12** 🔴 — Cloud runners (box-free Claude API, Textract) — BAA-gated

@@ -115,3 +115,9 @@ extend-exclude = [".claude"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+# The module docstring carries the exact command Arnav copy-pastes to run the build. It is
+# deliberately ONE line: a backslash-continued paste mangles the flags into literal escaped
+# spaces. Wrapping it to satisfy E501 would break the thing the docstring exists for.
+"ground_truth/build_gt.py" = ["E501"]

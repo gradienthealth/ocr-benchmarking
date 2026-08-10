@@ -106,6 +106,63 @@ def test_end_to_end_perfect_scene_numbers(scene):
     assert agg["model_name"] == "synthetic-perfect"
 
 
+def test_blank_control_absent_from_gt_dict_does_not_raise(scene):
+    """`load_gt()` OMITS blank image_ids — the harness must read them as zero GT, not KeyError.
+
+    A confirmed-blank frame contributes zero rows to gt.csv, so `load_gt()` never creates a
+    key for it (gt_schema.load_gt docstring). This builds the gt dict exactly the way the real
+    loader does — blanks absent, NOT mapped to `[]` — which is the shape Phase 13's first real
+    run hands in (97 of the 199 gt_v1 images are blank).
+    """
+    refs, gt_by_id = [], {}
+    for s in scene.images:
+        gt = [dataclasses.replace(t, label="KEEP") for t in s.gt]
+        refs.append(_ref(s.image_id, s.image, s.stratum, s.vendor, gt))
+        if gt:  # load_gt() writes no key at all for a blank frame
+            gt_by_id[s.image_id] = gt
+
+    blank_ids = {s.image_id for s in scene.blanks}
+    assert blank_ids and blank_ids.isdisjoint(gt_by_id)  # the fixture really is missing keys
+
+    def run(img):
+        return perfect_output(gt_by_id.get(img.id, []))
+
+    agg = run_harness(refs, run, gt_by_id, allowlist=set(scene.allowlist))
+
+    # Identical to the all-keys-present run: the missing key means zero GT, nothing else.
+    assert agg["n_images"] == 7
+    assert agg["overall"]["gt_total"] == 10
+    assert agg["overall"]["added_count"] == 0
+    assert agg["negative_control"]["n_control_images"] == 1
+    assert agg["negative_control"]["floor_count"] == 0
+    # The blank still lands in its manifest stratum, not a None bucket.
+    assert agg["per_stratum"]["synth_ct_axial"]["n_images"] == 4
+
+
+def test_absent_blank_control_still_counts_hallucinations(scene):
+    """The `.get(..., [])` default must not swallow inventions on the frames it defaults for.
+
+    Same absent-key shape as above, but the engine invents a word on every image. The blank
+    control's hallucination has to reach the floor — a default that quietly made blanks
+    unscoreable would report a floor of 0 for an engine that hallucinates on every blank.
+    """
+    refs, gt_by_id = [], {}
+    for s in scene.images:
+        gt = [dataclasses.replace(t, label="KEEP") for t in s.gt]
+        refs.append(_ref(s.image_id, s.image, s.stratum, s.vendor, gt))
+        if gt:
+            gt_by_id[s.image_id] = gt
+
+    def run(img):
+        return synthetic.hallucination_output(gt_by_id.get(img.id, []))
+
+    agg = run_harness(refs, run, gt_by_id, allowlist=set(scene.allowlist))
+
+    assert agg["overall"]["added_count"] == 7  # one invented word per image, blank included
+    assert agg["negative_control"]["n_control_images"] == 1
+    assert agg["negative_control"]["floor_count"] == 1
+
+
 # --- timer wraps ONLY run_func -------------------------------------------------
 
 

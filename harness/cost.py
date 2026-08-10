@@ -33,7 +33,7 @@ PRICES: dict[str, float] = {
     "claude": 5.00 / 1_000_000,   # $/input-token — Claude Opus 4.8 input ($5.00 / 1M)
     "gpt4o": 2.50 / 1_000_000,    # $/input-token — GPT-4o input ($2.50 / 1M)
     "cloud": 0.0015,              # $/image — AWS Textract / Google Vision ($1.50 / 1000)
-    "self_hosted": 0.0,           # $/image — docTR / PaddleOCR / EasyOCR / Surya / Qwen VLM
+    "self_hosted": 0.0,           # $/image — docTR / PaddleOCR / EasyOCR / Qwen VLM
 }
 
 _TILE = 512          # GPT-4o high-detail tile edge, in pixels

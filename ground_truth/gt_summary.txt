@@ -1,0 +1,96 @@
+=== Phase 10e — gt.csv build summary (PHI-free) ===
+
+gt.csv sha256      afc6598990eb5e0a2790e2aaa0ee962172c1ca3be600ab0b3e500b912d94759e
+gt_set.sha256      e0bf95035e036c02ee80e75065ea5190a53821bfd043facd9582f373880435ea
+                   (scope, not contents — a blank image changes this one only)
+
+-- scored set ------------------------------------------------------------
+drawn 202  ->  rendered 199  ->  reviewed 199  (deferred 0, missing 0)
+  NOTE 3 drawn series never rendered. Recorded, not fatal — they are
+       a fact about finished work, and aborting here would only invite --force.
+frame_idx disagreements vs manifest.middle_frame_index: 9 of 199
+  (the render manifest wins — it records the frame actually annotated)
+
+-- manifest loaded -------------------------------------------------------
+rows 966   ct_axial 66
+  (canonical pull is 966 / 66; anything else means a stale or partial manifest)
+
+-- gt.csv ----------------------------------------------------------------
+rows 2351   images with rows 102   images blank 97  (48.7%)
+labels   KEEP 1973   PHI 378
+blank-control survivors (ct_axial with zero rows): 64 of 66
+  2 control frame(s) HAVE text and left the control set: ['2207aaab', '2b0909a8']
+   That is the finding the negative control exists to surface, not an error.
+
+per stratum:
+  stratum                       images  w/text    rows    KEEP     PHI
+  ct_axial                          66       2       8       8       0
+  ct_scout                          12       0       0       0       0
+  ct_secondary_capture               4       3      57      43      14
+  mg_2d                             44      40     123     121       2
+  mg_tomo                           16       0       0       0       0
+  us_ge                             14      14     664     555     109
+  us_other                           1       1      61      58       3
+  us_philips                        13      13     469     389      80
+  us_samsung                         5       5     139     115      24
+  us_siemens                        13      13     345     290      55
+  us_sonosite                        2       2      29      27       2
+  us_toshiba_canon                   9       9     456     367      89
+
+per vendor:
+  Agfa                               1 rows
+  Carestream                         1 rows
+  DRTECH                             1 rows
+  FUJI                               2 rows
+  GE                               694 rows
+  HOLOGIC                           86 rows
+  MEDISON                           39 rows
+  Philips                          469 rows
+  R2 Technology Inc                 31 rows
+  SAMSUNG                           82 rows
+  SIEMENS                          350 rows
+  SONOACE                           18 rows
+  SonoSite                          29 rows
+  TOSHIBA                          486 rows
+  Unknown                           61 rows
+  VMI                                1 rows
+
+WARNING  stratum 'ct_scout' has NO text-bearing images. It has no recall
+         denominator, so any per-image recall mean over it reads a
+         meaningless saturated 100%. Report it as such or exclude it.
+WARNING  stratum 'mg_tomo' has NO text-bearing images. It has no recall
+         denominator, so any per-image recall mean over it reads a
+         meaningless saturated 100%. Report it as such or exclude it.
+
+-- 10d review + seed quality --------------------------------------------
+annotation rounds in the review dir: round 1: 199
+  ALL                          images  199  accepted   63  edited  136  deferred   0  unreviewed   0
+                               seed: unchanged 1480  text-fixed 157  box-fixed 0  deleted 2650  added 714
+  ct_axial                     images   66  accepted   36  edited   30  deferred   0  unreviewed   0
+                               seed: unchanged 2  text-fixed 1  box-fixed 0  deleted 110  added 5
+  ct_scout                     images   12  accepted    6  edited    6  deferred   0  unreviewed   0
+                               seed: unchanged 0  text-fixed 0  box-fixed 0  deleted 18  added 0
+  ct_secondary_capture         images    4  accepted    0  edited    4  deferred   0  unreviewed   0
+                               seed: unchanged 29  text-fixed 6  box-fixed 0  deleted 54  added 22
+  mg_2d                        images   44  accepted    3  edited   41  deferred   0  unreviewed   0
+                               seed: unchanged 33  text-fixed 5  box-fixed 0  deleted 532  added 85
+  mg_tomo                      images   16  accepted   16  edited    0  deferred   0  unreviewed   0
+                               seed: unchanged 0  text-fixed 0  box-fixed 0  deleted 0  added 0
+  us_ge                        images   14  accepted    1  edited   13  deferred   0  unreviewed   0
+                               seed: unchanged 455  text-fixed 57  box-fixed 0  deleted 489  added 152
+  us_other                     images    1  accepted    0  edited    1  deferred   0  unreviewed   0
+                               seed: unchanged 60  text-fixed 0  box-fixed 0  deleted 4  added 1
+  us_philips                   images   13  accepted    1  edited   12  deferred   0  unreviewed   0
+                               seed: unchanged 295  text-fixed 33  box-fixed 0  deleted 304  added 141
+  us_samsung                   images    5  accepted    0  edited    5  deferred   0  unreviewed   0
+                               seed: unchanged 78  text-fixed 9  box-fixed 0  deleted 201  added 52
+  us_siemens                   images   13  accepted    0  edited   13  deferred   0  unreviewed   0
+                               seed: unchanged 218  text-fixed 19  box-fixed 0  deleted 575  added 108
+  us_sonosite                  images    2  accepted    0  edited    2  deferred   0  unreviewed   0
+                               seed: unchanged 11  text-fixed 1  box-fixed 0  deleted 39  added 17
+  us_toshiba_canon             images    9  accepted    0  edited    9  deferred   0  unreviewed   0
+                               seed: unchanged 299  text-fixed 26  box-fixed 0  deleted 324  added 131
+
+-- D-10.7 self-agreement -------------------------------------------------
+self-agreement: not yet run (round 2 absent)
+  ~10% of the set gets re-reviewed after a gap into ground_truth/review_r2/.

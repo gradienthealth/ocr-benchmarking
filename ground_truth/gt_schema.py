@@ -289,10 +289,10 @@ def load_gt(
 
     NOTE for the caller — blank controls are ABSENT, not empty. A confirmed-blank frame has
     zero rows in `gt.csv`, so its `image_id` is not a key of this dict. Iterate images with
-    `gt.get(image_id, [])`. `harness/harness.py:157` currently indexes `ground_truth[img.id]`
-    directly and will `KeyError` on a blank control in the real run (Phase 13) — that is a
-    one-line fix THERE, and deliberately not papered over HERE with a `defaultdict`, which
-    would silently invent empty ground truth for a mistyped `image_id`.
+    `gt.get(image_id, [])`, which is what `run_harness` does. The default belongs in the
+    CALLER, where the image set is authoritative, and is deliberately not papered over HERE
+    with a `defaultdict`, which would silently invent empty ground truth for a mistyped
+    `image_id` — turning a typo into a free hallucination-floor pass.
 
     Raises:
         FileNotFoundError: `path` does not exist.

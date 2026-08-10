@@ -216,6 +216,9 @@ class World:
             "--out", str(self.out),
             "--review-dir", str(self.review),
             "--round2-dir", str(self.round2),
+            # Required (no default): it names a COMMITTED per-scope artifact that the build
+            # overwrites in place, so it is spelled out on every invocation.
+            "--text-presence-name", "text_presence_v2.csv",
         ]
 
     def run(self) -> str:
@@ -381,6 +384,101 @@ def test_invalid_label_is_rejected(world):
     with pytest.raises(BuildError, match="frozen 10a spec"):
         world.run()
     assert not world.out.exists()
+
+
+def test_part_candidate_is_removed_when_validation_refuses(world):
+    """The pre-validation `.part` holds the FULL table — it must not survive a refusal."""
+    world.write_review(IMG_MG_A, tokens=[dict(TOKENS[IMG_MG_A][0], label="OTHER")])
+    with pytest.raises(BuildError, match="frozen 10a spec"):
+        world.run()
+    assert not world.out.exists()
+    assert not Path(str(world.out) + ".part").exists()
+
+
+def test_part_candidate_is_removed_when_the_validator_itself_raises(world, monkeypatch):
+    """`finally`, not the failure branch: a raising validator left the file behind before."""
+    import ground_truth.build_gt as build_gt_module
+
+    def boom(*_a, **_k):
+        raise RuntimeError("validator died mid-check")
+
+    monkeypatch.setattr(build_gt_module, "validate_gt", boom)
+    with pytest.raises(RuntimeError):
+        world.run()
+    assert not Path(str(world.out) + ".part").exists()
+
+
+def test_a_successful_build_leaves_no_part_behind(world):
+    world.run()
+    assert world.out.exists()
+    assert not Path(str(world.out) + ".part").exists()
+
+
+def test_text_presence_name_is_required(world):
+    """No default: forgetting it must not silently overwrite another scope's denominator."""
+    argv = [a for a in world.argv() if a not in ("--text-presence-name",
+                                                 "text_presence_v2.csv")]
+    with pytest.raises(SystemExit) as exc:
+        make_parser().parse_args(argv)
+    assert exc.value.code == 2
+
+
+def _with_presence_name(world, name: str) -> list[str]:
+    argv = world.argv()
+    argv[argv.index("text_presence_v2.csv")] = name
+    return argv
+
+
+@pytest.mark.parametrize("name", ["../escaped.csv", "/tmp/escaped.csv", "sub/x.csv", ""])
+def test_text_presence_name_rejects_anything_but_a_bare_filename(world, name):
+    with pytest.raises(BuildError, match="bare filename"):
+        build(make_parser().parse_args(_with_presence_name(world, name)))
+
+
+@pytest.mark.parametrize("name", ["gt.csv", "gt.csv.sha256", "gt_set.sha256",
+                                  "gt_summary.txt"])
+def test_text_presence_name_may_not_collide_with_an_artifact(world, name):
+    """It is written last; colliding would overwrite a just-frozen file after its hash."""
+    with pytest.raises(BuildError, match="collides"):
+        build(make_parser().parse_args(_with_presence_name(world, name)))
+
+
+def test_a_rejected_presence_name_writes_nothing_at_all(world):
+    """The check must precede write_gt: otherwise gt.csv + both hashes are already replaced,
+    and the corrected re-run reads its own new hash as `prev` and prints no invalidation."""
+    with pytest.raises(BuildError):
+        build(make_parser().parse_args(_with_presence_name(world, "../escaped.csv")))
+    assert not world.out.exists()
+    assert not Path(str(world.out) + ".sha256").exists()
+    assert not (world.gt_dir / "gt_set.sha256").exists()
+    assert not (world.gt_dir / "gt_summary.txt").exists()
+    assert not (world.gt_dir.parent / "escaped.csv").exists()
+
+
+def test_summary_names_the_text_presence_file(world):
+    """Otherwise nothing afterwards records which denominator this build rewrote."""
+    assert "text_presence_v2.csv" in world.run()
+
+
+def test_non_numeric_render_geometry_is_refused_without_echoing_the_value(world):
+    """`int("...")` quotes what it choked on, and main() prints ValueError verbatim."""
+    path = world.renders / "render_manifest.csv"
+    text = path.read_text(encoding="utf-8").replace(",0,", ",CMFN-00421,", 1)
+    path.write_text(text, encoding="utf-8")
+    with pytest.raises(BuildError) as exc:
+        world.run()
+    assert "CMFN-00421" not in str(exc.value)
+    assert "non-integer frame_idx/w/h" in str(exc.value)
+
+
+def test_non_numeric_token_box_is_refused_without_echoing_the_value(world):
+    """A column-shifted record can put token text where a coordinate belongs."""
+    bad = dict(TOKENS[IMG_MG_A][0], box=["CMFN-00421", 1.0, 2.0, 3.0])
+    world.write_review(IMG_MG_A, tokens=[bad])
+    with pytest.raises(BuildError) as exc:
+        world.run()
+    assert "CMFN-00421" not in str(exc.value)
+    assert "token box that is not four numbers" in str(exc.value)
 
 
 def test_columns_match_the_frozen_spec(world):

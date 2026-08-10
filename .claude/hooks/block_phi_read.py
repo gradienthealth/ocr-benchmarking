@@ -56,9 +56,16 @@ PHI_EXT = (
 # closes that gap. `[^/]*` cannot cross a path separator, so `ground_truth/seed_summary.json`
 # (PHI-FREE per-image counts, which Arnav must still be able to read) stays allowed: there is
 # no `/` after `seed_summary.json`. Nothing above is loosened.
+#
+# `.*\.part` (added 2026-08-09): an interrupted atomic write. `build_gt.write_gt()` stages the
+# FULL gt.csv table at `ground_truth/gt.csv.part` before validating it, and 10d stages review
+# records as `<image_id>.json.<pid>.<tid>.part`. Neither is caught by the branches above —
+# `ground_truth.*\.csv` is `$`-anchored and `.part` is the final extension — so a crashed
+# build leaves a readable full-PHI file behind. A `.part` file is by definition a temp
+# artifact, so gating every one of them costs nothing.
 PHI_NAME = re.compile(
     r"(^|/)(gt\.csv|ground_truth.*\.csv|.*raw_response.*|.*render_backmap.*|.*render_inputs.*"
-    r"|ground_truth/seed(_[^/]*)?/.*|ground_truth/review.*/.*)$",
+    r"|ground_truth/seed(_[^/]*)?/.*|ground_truth/review.*/.*|.*\.part)$",
     re.I,
 )
 

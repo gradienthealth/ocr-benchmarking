@@ -17,6 +17,13 @@
 # Ground truth + annotation exports (contain PHI token text)
 ground_truth/gt.csv
 ground_truth/*.csv
+# Pre-validation candidates and interrupted atomic writes. `build_gt.write_gt()` writes the
+# FULL gt.csv table to `ground_truth/gt.csv.part` before validating it, and 10d's record
+# writer writes `<image_id>.json.<pid>.<tid>.part` — both hold PHI, and NEITHER is matched by
+# the `ground_truth/*.csv` or `ground_truth/review/` rules (`.part` is the final extension,
+# and a killed process leaves the file behind). Unsuffixed `*.part` so any future atomic
+# writer is covered the day it is written, not the day someone notices.
+*.part
 # Phase 10b sidecars, spelled out even though ground_truth/*.csv already covers them at
 # their default paths: the back-map is the image_id -> SOPInstanceUID/series_uid link and
 # the input list holds series UIDs + local paths. Both are PHI-adjacent wherever they live.
