@@ -17,12 +17,10 @@ This file touches ZERO PHI: it is a pure abstract interface plus a cost default.
 
 from __future__ import annotations
 
-import hashlib
-import json
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
-from harness.contract import OCROutput
+from harness.contract import OCROutput, config_digest
 from harness.cost import estimate_cost
 
 if TYPE_CHECKING:  # avoid an import cycle with harness.py; only used for the type hint
@@ -88,16 +86,16 @@ class Runner(ABC):
     def config_hash(self) -> str:
         """Stable 12-hex-char digest of `config()`. Do NOT override.
 
-        Implemented once here so no runner can hash differently — a per-engine digest would
-        make cross-engine identities incomparable and reintroduce the collision. Canonical
-        JSON (`sort_keys=True`) so key order never changes the digest; `default=str` so a
-        non-JSON knob (an enum, a Path) degrades to its string form instead of raising.
+        Delegates to `contract.config_digest`, the single implementation, so no runner can
+        hash differently — a per-engine digest would make cross-engine identities
+        incomparable and reintroduce the collision. It lives in `contract.py` rather than
+        here because `reading.py`'s `Reader` needs the identical algorithm and must not
+        import the runners package to get it (Phase 13b).
 
         Like `version_source`, this is NOT a second source of truth (D-8.2): the runner
         declares `config()` and everything downstream derives from it.
         """
-        canonical = json.dumps(self.config(), sort_keys=True, default=str)
-        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:12]
+        return config_digest(self.config())
 
     def cost(self, image_ref: "ImageRef") -> float:
         """Estimated dollar cost of running this engine on `image_ref`.
