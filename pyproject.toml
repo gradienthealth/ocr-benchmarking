@@ -121,3 +121,7 @@ select = ["E", "F", "I", "UP", "B"]
 # deliberately ONE line: a backslash-continued paste mangles the flags into literal escaped
 # spaces. Wrapping it to satisfy E501 would break the thing the docstring exists for.
 "ground_truth/build_gt.py" = ["E501"]
+# Same reason, same one-line copy-paste command (Phase 13h): the dev-slice draw and the
+# threshold sweep are both run by hand from their docstrings.
+"ground_truth/select_dev_slice.py" = ["E501"]
+"experiments/sweep_stock_vs_tuned.py" = ["E501"]

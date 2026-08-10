@@ -535,13 +535,21 @@ def test_runner_config_covers_its_init_signature(runner: Runner):
 
 
 _EXPECTED_KNOBS = {
-    "doctr": {"det_arch", "reco_arch"},
+    # bin_thresh/box_thresh added in Phase 13h: they are `None` (= docTR's own default) on
+    # the stock arm and floats on the tuned one, so they must be DECLARED even when unset —
+    # an undeclared knob is how the two arms would hash the same.
+    "doctr": {"det_arch", "reco_arch", "bin_thresh", "box_thresh"},
     # The three PP-OCR flags are correctness requirements, not tuning (see the runner), but
-    # they are declared so an arm that ever flips one cannot merge with these results.
-    "pp-ocrv6_medium": {"return_word_box", "enable_mkldnn", "det_model", "rec_model"},
+    # they are declared so an arm that ever flips one cannot merge with these results. The
+    # four text_det_* knobs are step 6's tuning surface, declared for the same reason.
+    "pp-ocrv6_medium": {
+        "return_word_box", "enable_mkldnn", "det_model", "rec_model",
+        "text_det_thresh", "text_det_box_thresh",
+        "text_det_unclip_ratio", "text_det_limit_side_len",
+    },
     # Declared separately, not as the single value they are both set from: the effective
     # floor is max(low_text, text_threshold), so an arm moving only one is a different arm.
-    "easyocr": {"text_threshold", "low_text"},
+    "easyocr": {"text_threshold", "low_text", "link_threshold"},
 }
 
 

@@ -1,0 +1,21 @@
+{
+  "README": [
+    "Phase 13h / D-13.4. The FROZEN tuned configuration per engine, chosen by the dev-slice",
+    "sweep (experiments/sweep_stock_vs_tuned.py --freeze) and read by",
+    "harness/runners/arms.py:build_arm('<engine>:tuned').",
+    "",
+    "PHI-free: knob values, hashes and counts only.",
+    "",
+    "'engines' is EMPTY until the dev slice has been annotated and swept. That is not a",
+    "placeholder to fill in by hand — build_arm() raises ArmNotFrozenError while it is empty,",
+    "which is correct: a tuned arm built from guessed values would report a measurement under",
+    "a label it did not earn (CLAUDE.md rule #9).",
+    "",
+    "easyocr never appears here. Its stock/tuned pair is fixed by definition (library",
+    "defaults 0.7/0.4 vs the 0.2/0.2 config Phase 9 shipped), not selected by a sweep."
+  ],
+  "d_13_4": "PENDING — dev_v1 not yet annotated. Tuning happens on a slice drawn from OUTSIDE the frozen gt_v1 scored set; sweeping against gt.csv would fit the test set and turn every tuned number into an optimistic bound (plan.md Trap 1).",
+  "dev_set": null,
+  "rank_metric": null,
+  "engines": {}
+}
