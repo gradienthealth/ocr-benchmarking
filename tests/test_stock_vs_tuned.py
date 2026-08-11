@@ -672,3 +672,202 @@ def _write(path: Path, header, rows) -> None:
         writer = csv.writer(fh)
         writer.writerow(header)
         writer.writerows(rows)
+
+
+# --- 8. --from-report: choosing the ranking metric after the sweep -----------------------
+#
+# The sweep is ~2.5h of CPU and the project's two documents disagree about which metric
+# leads (CLAUDE.md §1 vs the reading-quality framing). Before this path existed, picking the
+# other metric meant running every engine again. These pin that re-selection reads the
+# report and nothing else — and that the offline route is not a way around D-13.4.
+
+
+def _dual_trial(config_id: str, config: dict, fr: float, kem: float) -> dict:
+    """One trial carrying BOTH ranking metrics, which is what the real report carries."""
+    return {
+        "config": config,
+        "config_id": config_id,
+        "config_hash": "h" + config_id,
+        "declared_config": config,
+        "version": "v1.0.1",
+        "overall": {
+            "false_redaction_rate": fr,
+            "keep_exact_match_rate": kem,
+            "added_count": 0,
+            "omission_count": 0,
+            "latency": {"mean": 1.0, "median": 1.0, "p95": 1.0},
+        },
+        "per_stratum": {"mg_2d": {"false_redaction_rate": fr, "keep_exact_match_rate": kem}},
+        "negative_control": {},
+    }
+
+
+# Deliberately crossed: `low_fr` is the best false-redaction config, `high_keep` is the best
+# KEEP-exact config. Which one is "the tuned arm" is therefore decided entirely by --rank-by.
+_TRIALS = [
+    _dual_trial("stock", {}, fr=0.30, kem=0.60),
+    _dual_trial("tuned", {"bin_thresh": 0.3}, fr=0.10, kem=0.65),
+    _dual_trial("tuned2", {"bin_thresh": 0.1}, fr=0.20, kem=0.90),
+]
+
+
+def _report(dir_: Path, engine: str = "doctr", *, gt_hash: str = "a" * 64,
+            gt_name: str = "dev_v1.csv", n_images: int = 22, trials=None) -> Path:
+    dir_.mkdir(parents=True, exist_ok=True)
+    ctx = {
+        "gt_name": gt_name,
+        "gt_hash": gt_hash,
+        "n_images": n_images,
+        "rank_metric": "false_redaction_rate",
+        "rank_direction": "lower",
+        "max_stratum_regression": 0.02,
+        "engines": [{
+            "engine": engine,
+            "version": "v1.0.1",
+            "sweep_size": 3,
+            "grid_truncated_by_budget": 0,
+            "rank_metric": "false_redaction_rate",
+            "rank_direction": "lower",
+            "max_stratum_regression": 0.02,
+            "stock": (trials or _TRIALS)[0],
+            "trials": trials or _TRIALS,
+            "disqualified": [],
+            "winner": (trials or _TRIALS)[1],
+        }],
+    }
+    (dir_ / "sweep_report.json").write_text(json.dumps(ctx, indent=2) + "\n", encoding="utf-8")
+    return dir_
+
+
+def test_the_ranking_metric_can_be_changed_without_rerunning_any_engine(tmp_path):
+    """The whole point: same measured trials, other metric, different tuned arm."""
+    import experiments.sweep_stock_vs_tuned as sweep
+
+    shard = _report(tmp_path / "doctr")
+
+    by_fr = sweep.main(["--from-report", str(shard), "--rank-by", "false_redaction_rate"])
+    assert by_fr == 0
+
+    ctx = sweep._reselect(sweep._parse_args(
+        ["--from-report", str(shard), "--rank-by", "keep_exact_match_rate"]
+    ))
+    assert ctx["engines"][0]["winner"]["config_id"] == "tuned2"
+
+    ctx_fr = sweep._reselect(sweep._parse_args(
+        ["--from-report", str(shard), "--rank-by", "false_redaction_rate"]
+    ))
+    assert ctx_fr["engines"][0]["winner"]["config_id"] == "tuned"
+
+
+def test_reselection_needs_no_gt_no_renders_and_builds_no_engine(tmp_path, monkeypatch):
+    """No --gt, no --renders, and `build_runner` blows up if anything tries to construct one."""
+    import experiments.sweep_stock_vs_tuned as sweep
+
+    def explode(*a, **k):  # pragma: no cover - the point is that it is never called
+        raise AssertionError("--from-report constructed an engine")
+
+    monkeypatch.setattr(sweep, "build_runner", explode)
+    monkeypatch.setattr(sweep, "load_dev_images", explode)
+    assert sweep.main(["--from-report", str(_report(tmp_path / "doctr"))]) == 0
+
+
+def test_per_engine_shards_are_merged(tmp_path):
+    import experiments.sweep_stock_vs_tuned as sweep
+
+    a = _report(tmp_path / "doctr", engine="doctr")
+    b = _report(tmp_path / "paddle", engine="pp-ocrv6_medium")
+    ctx = sweep._reselect(sweep._parse_args(
+        ["--from-report", str(a), "--from-report", str(b)]
+    ))
+    assert [e["engine"] for e in ctx["engines"]] == ["doctr", "pp-ocrv6_medium"]
+
+
+def test_shards_from_different_dev_sets_are_refused(tmp_path):
+    """Two dev sets under one `dev_set` line in tuned_configs.json would be a false claim."""
+    import experiments.sweep_stock_vs_tuned as sweep
+
+    a = _report(tmp_path / "doctr", engine="doctr", gt_hash="a" * 64)
+    b = _report(tmp_path / "paddle", engine="pp-ocrv6_medium", gt_hash="b" * 64)
+    with pytest.raises(SweepError, match="different dev set"):
+        sweep._reselect(sweep._parse_args(["--from-report", str(a), "--from-report", str(b)]))
+
+
+def test_the_same_engine_in_two_shards_is_refused_not_silently_picked(tmp_path):
+    import experiments.sweep_stock_vs_tuned as sweep
+
+    a = _report(tmp_path / "one", engine="doctr")
+    b = _report(tmp_path / "two", engine="doctr")
+    with pytest.raises(SweepError, match="appears in both"):
+        sweep._reselect(sweep._parse_args(["--from-report", str(a), "--from-report", str(b)]))
+
+
+def test_a_report_of_the_scored_set_cannot_be_frozen_from(tmp_path):
+    """D-13.4 has no override — including via a report that skips the --gt guard entirely."""
+    import experiments.sweep_stock_vs_tuned as sweep
+
+    frozen = sweep.FROZEN_GT_HASH.read_text(encoding="utf-8").strip()
+    shard = _report(tmp_path / "doctr", gt_hash=frozen, gt_name="totally_not_gt.csv")
+    with pytest.raises(SweepError, match="same sha256 as the frozen gt.csv"):
+        sweep._reselect(sweep._parse_args(["--from-report", str(shard)]))
+
+
+def test_a_report_named_gt_csv_is_refused_too(tmp_path):
+    import experiments.sweep_stock_vs_tuned as sweep
+
+    shard = _report(tmp_path / "doctr", gt_name="gt.csv")
+    with pytest.raises(SweepError, match="FROZEN SCORED SET"):
+        sweep._reselect(sweep._parse_args(["--from-report", str(shard)]))
+
+
+def test_an_unfinished_shard_names_itself_instead_of_stack_tracing(tmp_path):
+    import experiments.sweep_stock_vs_tuned as sweep
+
+    (tmp_path / "running").mkdir()
+    with pytest.raises(SweepError, match="has not finished"):
+        sweep._reselect(sweep._parse_args(["--from-report", str(tmp_path / "running")]))
+
+
+def test_sweeping_without_its_inputs_names_the_missing_flags(tmp_path):
+    """The flags became optional so --from-report could omit them; sweeping still needs them."""
+    import experiments.sweep_stock_vs_tuned as sweep
+
+    with pytest.raises(SweepError, match=r"--renders.*--gt.*--backmap.*--manifest"):
+        sweep.main(["--out", str(tmp_path / "out")])
+
+
+def test_a_reselected_report_is_not_written_as_a_measured_one(tmp_path):
+    """Otherwise it lands in a shard dir as sweep_report.json and reads back as a measurement."""
+    import experiments.sweep_stock_vs_tuned as sweep
+
+    shard = _report(tmp_path / "doctr")
+    out = tmp_path / "out"
+    sweep.main(["--from-report", str(shard), "--out", str(out)])
+    assert (out / "reselected_report.json").is_file()
+    assert not (out / "sweep_report.json").exists()
+
+
+def test_freezing_offline_records_that_it_was_offline(tmp_path, monkeypatch):
+    """`tuned_configs.json` must say the winner was re-ranked from shards, not measured now."""
+    import experiments.sweep_stock_vs_tuned as sweep
+
+    tuned = tmp_path / "tuned_configs.json"
+    monkeypatch.setattr(sweep, "TUNED_CONFIGS", tuned)
+    shard = _report(tmp_path / "doctr")
+    sweep.main(["--from-report", str(shard), "--rank-by", "keep_exact_match_rate", "--freeze"])
+
+    doc = json.loads(tuned.read_text(encoding="utf-8"))
+    assert doc["rank_metric"] == "keep_exact_match_rate"
+    assert doc["engines"]["doctr"]["config"] == {"bin_thresh": 0.1}   # the KEEP-exact winner
+    assert doc["selected_offline_from"] == [str(shard / "sweep_report.json")]
+
+
+def test_a_later_measured_freeze_drops_the_stale_offline_provenance(tmp_path):
+    """Same trap as a stale winner: a leftover line describing a run that did not happen."""
+    out = tmp_path / "tuned_configs.json"
+    offline = _sweep_ctx({"config": {"bin_thresh": 0.3}, "config_hash": "a" * 12})
+    offline["source_reports"] = ["experiments/sweep_dev_v1_doctr/sweep_report.json"]
+    freeze_winners(offline, out)
+    assert "selected_offline_from" in json.loads(out.read_text(encoding="utf-8"))
+
+    freeze_winners(_sweep_ctx({"config": {"bin_thresh": 0.5}, "config_hash": "b" * 12}), out)
+    assert "selected_offline_from" not in json.loads(out.read_text(encoding="utf-8"))
