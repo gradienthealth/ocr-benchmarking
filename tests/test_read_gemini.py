@@ -24,8 +24,7 @@ from PIL import Image
 from harness.contract import GTToken
 from harness.cost import PRICES, estimate_cost
 from harness.harness import ImageRef
-from harness.reading import crop_for_reading, read_image
-from harness.runners.read_gemini import (
+from harness.readers.read_gemini import (
     BAA_ENV_VAR,
     PINNED_MODEL,
     BAAGateError,
@@ -37,9 +36,10 @@ from harness.runners.read_gemini import (
     SyntheticProvenanceError,
     crop_digest,
 )
+from harness.reading import crop_for_reading, read_image
 from tests import synthetic
 
-MODULE = Path(__file__).resolve().parents[1] / "harness" / "runners" / "read_gemini.py"
+MODULE = Path(__file__).resolve().parents[1] / "harness" / "readers" / "read_gemini.py"
 
 
 class SpyTransport:

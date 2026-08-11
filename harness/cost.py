@@ -72,7 +72,7 @@ def _gemini_tokens(w: int, h: int) -> int:
     Plus the reader's fixed text instruction. INPUT SIDE ONLY — and for Gemini 2.5 Pro
     that is a floor, not the bill: thinking tokens are billed as OUTPUT and cannot be
     switched off, and nothing derivable from `(w, h)` predicts how many there will be.
-    `harness.runners.read_gemini` therefore accumulates the token counts the API actually
+    `harness.readers.read_gemini` therefore accumulates the token counts the API actually
     reports; `usage_summary()["measured_cost_usd"]`, not this estimate, is what the arm
     should be priced on in any report.
     """

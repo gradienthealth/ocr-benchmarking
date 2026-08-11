@@ -88,7 +88,7 @@ def _may_show_predictions(reader: Reader) -> bool:
     no business in this bench at all, and if one ever appears here the flag must not be the
     thing that decides whether its output is printed.
     """
-    from harness.runners.read_gemini import CropSource, GeminiReader
+    from harness.readers.read_gemini import CropSource, GeminiReader
 
     if isinstance(reader, GeminiReader):
         return reader.source is CropSource.SYNTHETIC
@@ -146,7 +146,7 @@ def bench(
 
 def build_gemini(fixtures: list[Fixture]) -> Reader:
     """The 13g arm on the synthetic path: registered fixture pixels, no BAA flag needed."""
-    from harness.runners.read_gemini import CropSource, GeminiReader, crop_digest
+    from harness.readers.read_gemini import CropSource, GeminiReader, crop_digest
 
     return GeminiReader(
         source=CropSource.SYNTHETIC,

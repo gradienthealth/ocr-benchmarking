@@ -41,12 +41,25 @@ WHAT THIS MODULE NEVER DOES
 
 RULE #9 WITH NO `__version__` TO SOURCE FROM
 ---------------------------------------------------------------------------------
-No installed library ships this model, so `version_source` is None and the usual
-cross-check in `tests/test_runner_contract.py` cannot apply. Two things replace it: the
-requested model id must name a **pinned revision** (a bare `gemini-2.5-pro` alias is
-rejected — an alias silently re-points and makes two runs incomparable), and the revision
-the API reports back is compared to the one we asked for on every call, raising
-`ServedVersionMismatch` on a disagreement instead of blending two models into one arm.
+No installed library ships this model, so `version_source` is None and the shared
+version-sourcing check in `tests/test_readers.py` cannot apply — this reader is named in
+that test's exemption list, which is how opting out stays a visible, reviewable edit rather
+than a default. Setting `version_source = "google.genai"` would be worse than useless: the
+SDK version says nothing about what the model returns, so it would attach a confident,
+wrong provenance to every row.
+
+What replaces it: the revision is pinned from the RESPONSE. Vertex serves only the alias
+`gemini-2.5-pro` (verified 2026-08-11 — the dated preview revisions 404), so there is no
+revision to put in the request. The first reply's `model_version` becomes this arm's
+`version`; reading `version` before that raises rather than stamping a placeholder onto a
+result row; a later reply naming a different revision aborts the run; and an alias plus a
+reply carrying no revision at all is fatal, because an unattributable number is not a
+measurement.
+
+Known limitation, to be stated in any write-up rather than implied away: Vertex reports
+`model_version` as the alias itself, so this arm's identity is really "whatever
+`gemini-2.5-pro` was on the run date." The mechanism would catch a mid-run change; it
+cannot manufacture precision Google does not publish. The run date is part of the version.
 
 COST
 ---------------------------------------------------------------------------------
@@ -63,6 +76,7 @@ import hashlib
 import io
 import os
 import re
+import string
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
@@ -468,6 +482,29 @@ class GeminiReader(Reader):
             ),
             "served_model_version": self.served_model_version,
         }
+
+    def charset(self) -> frozenset[str]:
+        """Single characters this reader can emit. Structurally unconstrained, not measured.
+
+        Same contract as 13c's and 13d's readers so `tests/test_readers.py`'s shared charset
+        check applies here unchanged — but the honest answer is a different KIND of answer
+        than theirs, and that difference is worth stating rather than hiding behind a
+        matching signature.
+
+        A CTC recognizer has a decoder dictionary that can be read off the model; Qwen3-VL
+        has a tokenizer whose single-character pieces can be enumerated. This model is behind
+        an API: there is no dictionary to inspect, and a general text model is not restricted
+        to one. So this returns printable ASCII as a claim about the decoder's *structure*
+        (nothing constrains it to a subset), not as a measurement of an artifact we hold.
+
+        The check still earns its place for the other readers, and failing it is impossible
+        here — which is the point worth flagging: **this arm's risk is the opposite one.** A
+        recognizer that cannot spell `A-Z0-9-` scores badly for a reason unrelated to reading;
+        a generative model can spell anything, including a plausible identifier that is not
+        in the image. Invention is what to watch here, and it is measured by the negative
+        control, never by this method.
+        """
+        return frozenset(string.printable.strip())
 
     def config(self) -> dict[str, object]:
         """Every knob that changes what this reader outputs (D-13.5).
