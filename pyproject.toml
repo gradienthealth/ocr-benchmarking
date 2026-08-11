@@ -94,6 +94,31 @@ easyocr = ["easyocr==1.7.2"]
 # Resolved in-env 2026-08-06: pytesseract 0.3.13 (wrapper pin only; binary/Leptonica/
 # traineddata versions + traineddata sha256 are recorded per-run in the seed metadata).
 tesseract = ["pytesseract==0.3.13"]
+#
+# Qwen3-VL-4B-Instruct (Phase 13d, reader Arm C — the VLM reader and the D-11.1 evidence).
+# Self-hosted only: weights load from the local HF cache and inference runs in-process, so no
+# crop ever leaves the environment (CLAUDE.md §4).
+#
+# ⚠️ INSTALL THIS IN A WORKTREE-LOCAL venv, NEVER THE SHARED BENCHMARK venv. A worktree's
+# `.venv` is normally a symlink to the repo-root one, so a pip install from inside it changes
+# the environment docTR/PP-OCRv6/EasyOCR are being measured in — invalidating cross-run
+# comparability silently, the way an engine bump does (rule #9). Delete the symlink and make a
+# real venv first (CLAUDE.md, "Git worktrees + the shared .venv").
+#
+# Same CPU-torch-first order as [doctr]: an extra cannot carry an index URL, and plain-PyPI
+# `torch` on Linux is the CUDA build (~2 GB of nvidia-* wheels).
+#
+#   pip install torch==2.13.0+cpu torchvision==0.28.0+cpu --index-url https://download.pytorch.org/whl/cpu
+#   pip install -e ".[qwen3vl]"
+#
+# Resolved in-env 2026-08-11: transformers 5.15.0, tokenizers 0.22.2, safetensors 0.8.0,
+# accelerate 1.14.0, torch 2.13.0+cpu. transformers >= 5.x is required for `Qwen3VLForConditionalGeneration`
+# (added 4.57); the reader loads it through `AutoModelForImageTextToText`.
+# Weights (~9 GB, 2 safetensors shards) download once into ~/.cache/huggingface at the commit
+# sha pinned in `harness/readers/read_qwen3vl.py:REVISION`; no image ever leaves the environment.
+# A model-revision change invalidates prior results exactly like a library bump — the sha is in
+# the reader's config() and therefore in every row's config_hash.
+qwen3vl = ["transformers==5.15.0", "accelerate==1.14.0"]
 
 [tool.setuptools.packages.find]
 # `ground_truth*` added for Phase 10a: `gt_schema.py` is imported by the tests now and by
@@ -125,3 +150,6 @@ select = ["E", "F", "I", "UP", "B"]
 # threshold sweep are both run by hand from their docstrings.
 "ground_truth/select_dev_slice.py" = ["E501"]
 "experiments/sweep_stock_vs_tuned.py" = ["E501"]
+# Same again (Phase 13d): the reader's negative-control run is a one-line copy-paste with five
+# path flags. Only the docstring command needs it — the code in that file stays inside 100.
+"experiments/reader_negative_control.py" = ["E501"]
