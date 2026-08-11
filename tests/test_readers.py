@@ -81,6 +81,20 @@ _NO_DOCTR = "python-doctr not installed; install with: pip install -e '.[doctr]'
 requires_doctr = pytest.mark.skipif(_PARSEQ is None, reason=_NO_DOCTR)
 
 
+def test_every_reader_is_registered():
+    """An import failure must fail, not silently delete the parametrized tests.
+
+    `REGISTERED_READERS` drops a reader whose module will not import. That is right for a
+    machine without the engine installed, but it means a broken import here empties the list
+    and every shared test below vanishes — passing, with no skip and no failure, which is
+    exactly the "completed while silently skipped" outcome CLAUDE.md forbids. The skipif
+    marks cover the two reader-specific tests; this covers the shared ones.
+    """
+    assert SVTRv2Reader is not None, _NO_OPENOCR
+    assert DoctrParseqReader is not None, _NO_DOCTR
+    assert len(REGISTERED_READERS) == 2
+
+
 @pytest.fixture(scope="module")
 def token_crop():
     """One preprocessed crop of a synthetic `CMFN-00421`, built exactly as the arm builds it.
@@ -201,9 +215,20 @@ def test_openocr_reader_writes_no_stray_file(token_crop, tmp_path, monkeypatch):
     OpenOCR's end-to-end task writes `./e2e_results/system_results.txt` into the working
     directory. On real data that file is engine-read token text — PHI — in an unmanaged
     location, so "we don't call that task" has to be enforced rather than assumed.
+
+    Builds its OWN reader instead of reusing the shared `_SVTRV2`, and does so inside the
+    redirected working directory: the shared instance has already been constructed by an
+    earlier test, so reusing it would cover `read()` only and leave the model-construction
+    path — the one that resolves configs and materializes a checkpoint — untested. That also
+    makes the test independent of the order the file happens to run in.
+
+    The repo-root check afterwards is a backstop, not a claim about this read: with the CWD
+    redirected, a relative write lands in `tmp_path` and is caught above. It catches a write
+    that used an absolute or repo-relative path instead.
     """
     monkeypatch.chdir(tmp_path)
-    _SVTRV2.read(token_crop)
+    reader = SVTRv2Reader()
+    reader.read(token_crop)
 
     assert os.listdir(tmp_path) == []
     for leaked in ("e2e_results", "rec_results"):

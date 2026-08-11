@@ -3,9 +3,16 @@
 SVTRv2 is **self-hosted and local**: `openocr-python` downloads one checkpoint on first use
 (ModelScope, falling back to HuggingFace, then a manual GitHub release URL) into
 `~/.cache/openocr`, and every inference runs in-environment. No crop and therefore no PHI
-ever leaves the box, so no BAA is needed (CLAUDE.md §4). This module never prints, logs or
-returns anything but the read string, which its caller (`harness.reading.read_image`) keeps
-inside the scoring path.
+ever leaves the box, so no BAA is needed (CLAUDE.md §4). The read string is returned to the
+caller (`harness.reading.read_image`), which keeps it inside the scoring path; nothing here
+prints or logs it.
+
+⚠️ **OpenOCR itself logs to stdout.** Building the recognizer emits INFO lines from
+`openocr`'s own logger — the task name, the resolved device, the checkpoint path it loaded.
+They are PHI-free (no crop, no read string is ever logged, including in `__call__`), but they
+are not silenced here, so a caller that captures stdout gets them. Do not "fix" that by
+routing engine output somewhere it could later carry a read: the reason this is safe is that
+the logger never sees one.
 
 **This is a READER, not an engine.** It gets a crop and returns a string; it has no detector
 in this arm and never appears in the end-to-end ranking. OpenOCR's *detector* is separately
@@ -171,8 +178,15 @@ class SVTRv2Reader(Reader):
         Checked by a test against `A-Z0-9-`: OpenOCR's recognizers ship a Chinese-first
         dictionary, and a reader that cannot represent the character class of a patient ID
         would score badly for a reason that has nothing to do with reading quality.
+
+        The decoder's own list is not a charset — `CTCLabelDecode.add_special_char` prepends
+        the literal token `'blank'`, a 5-character string that is never emitted. Keeping only
+        single-character entries makes this a set of characters, so a later check that counts
+        or iterates it is not quietly off by the special tokens.
         """
-        return frozenset(self.engine.model.post_process_class.character)
+        return frozenset(
+            c for c in self.engine.model.post_process_class.character if len(c) == 1
+        )
 
     def read(self, crop: Image.Image) -> str:
         """Read one preprocessed crop. No re-crop, no re-scale, no filtering.

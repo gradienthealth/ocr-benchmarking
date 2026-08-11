@@ -136,6 +136,15 @@ class DoctrParseqReader(Reader):
         recognizer's input shape happens inside the model and is part of the model, exactly as
         OpenOCR's is; this arm's preprocessing is not touched.
 
+        ⚠️ **Asymmetry worth reporting, not a preprocessing violation.** docTR's
+        `RecognitionPredictor` splits any crop wider than 8x its height into overlapping
+        sub-crops, reads each, and reassembles the string. At the pinned `CROP_HEIGHT = 48`
+        that fires above ~384px of crop width, i.e. on long tokens. It is a fixed default of
+        the predictor class, not an argument `recognition_predictor()` exposes, so it is
+        pinned by the docTR version rather than being a hidden knob — but SVTRv2 has no
+        equivalent stage, so a wide-token difference between the two readers may be this and
+        not reading quality. Say so in the write-up rather than averaging it away.
+
         Returns the model's raw string with no cleanup and no confidence gate: `normalize()`
         is applied later, at scoring time only, and a low-confidence read is still a read —
         discarding one would hide a false redaction, the headline metric (CLAUDE.md §8). An
