@@ -94,6 +94,17 @@ easyocr = ["easyocr==1.7.2"]
 # Resolved in-env 2026-08-06: pytesseract 0.3.13 (wrapper pin only; binary/Leptonica/
 # traineddata versions + traineddata sha256 are recorded per-run in the seed metadata).
 tesseract = ["pytesseract==0.3.13"]
+#
+# SVTRv2 (Phase 13c, READING arm — not an end-to-end engine). `openocr-python` is the
+# packaged OpenOCR release; this project uses its `task='rec'` recognizer only, never its
+# detector (ruled out — plan.md PHASE 9). Depends on torch/torchvision, already satisfied by
+# the CPU wheels installed for [doctr] above — install those FIRST if starting from scratch,
+# or plain-PyPI `torch` will pull the CUDA build (D-9.1, CPU-only).
+#
+# Resolved in-env 2026-08-11: openocr-python 0.1.5, torch 2.13.0+cpu.
+# Weights (openocr_svtrv2_ch.pth, ~124 MB) download once into ~/.cache/openocr from
+# ModelScope, falling back to HuggingFace; no crop ever leaves the environment.
+openocr = ["openocr-python==0.1.5"]
 
 [tool.setuptools.packages.find]
 # `ground_truth*` added for Phase 10a: `gt_schema.py` is imported by the tests now and by
