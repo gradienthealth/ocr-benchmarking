@@ -61,17 +61,25 @@ is a debug line someone adds in six months, not a branch a behavioural test woul
 
 ## 2. Test + lint
 
+After merging main (13c + 13d), in the **repo-root** venv — the only one with openocr and
+docTR installed, which `tests/test_readers.py::test_every_reader_is_registered` requires:
+
 ```
-544 passed, 28 skipped  (28 = engine-dep tests; docTR/Paddle/EasyOCR are not in this venv)
-tests/test_read_gemini.py: 36 passed
-ruff: the four files touched here are clean.
+617 passed, 3 skipped, 1 xfailed
+tests/test_read_gemini.py: 38 passed   (offline; no network, no credentials)
 ```
 
-**Not clean, and not mine:** `ruff check .` reports **27 errors repo-wide**, the identical
-count the untouched root checkout reports (`harness/report.py` 14, `harness/harness.py` 6,
-`cost.py` 2, `base.py` 2, `aggregate.py` 2, `test_harness.py` 1). Pre-existing lint debt at
-the pinned ruff 0.9.1 — this branch adds zero. Worth a separate cleanup pass; not folded into
-a BAA-gated change.
+The 13g work was developed in a **worktree-local** venv (`.worktrees/13g/.venv`, a real
+directory, not a symlink) because it installs `google-genai` — CLAUDE.md forbids putting
+model dependencies in the shared benchmark venv, since that silently changes the environment
+docTR/PP-OCRv6/EasyOCR are measured in. `google-genai` is **not** in the repo-root venv, and
+nothing was installed there. The suite passes in both; the worktree venv reports one failure,
+`test_every_reader_is_registered`, which is that test correctly noticing openocr and docTR
+are absent there.
+
+**Lint: 27 errors repo-wide, identical to main's pre-existing count** (16 UP007, 4 E501,
+3 UP037, 2 UP035, 1 I001, 1 F841). This branch adds none. Worth a separate cleanup pass; not
+folded into a BAA-gated change.
 
 ---
 
