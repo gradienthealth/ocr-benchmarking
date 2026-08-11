@@ -1,0 +1,2480 @@
+{
+  "engines": [
+    {
+      "disqualified": [],
+      "engine": "doctr",
+      "grid_truncated_by_budget": 0,
+      "max_stratum_regression": 0.02,
+      "rank_direction": "lower",
+      "rank_metric": "false_redaction_rate",
+      "stock": {
+        "config": {},
+        "config_hash": "a1df589d1b52",
+        "config_id": "stock",
+        "declared_config": {
+          "bin_thresh": null,
+          "box_thresh": null,
+          "det_arch": "fast_base",
+          "reco_arch": "crnn_vgg16_bn"
+        },
+        "negative_control": {
+          "floor_count": 2,
+          "hallucinations_per_image": 0.4,
+          "n_control_images": 5
+        },
+        "overall": {
+          "added_count": 89,
+          "cost": {
+            "mean": 0.0,
+            "sum": 0.0
+          },
+          "diagnostic": {
+            "cer_mean": 0.046671464574587575,
+            "char_censor_rate": 0.20534351145038168,
+            "keep_chars_censored": 269,
+            "keep_chars_total": 1310,
+            "n_cer_images": 16,
+            "wer_mean": 0.1607378048880512
+          },
+          "false_redaction_count": 110,
+          "false_redaction_rate": 0.27918781725888325,
+          "found_count": 398,
+          "gt_total": 471,
+          "keep_exact_match_count": 284,
+          "keep_exact_match_rate": 0.7208121827411168,
+          "keep_total": 394,
+          "latency": {
+            "mean": 2.3071849174545647,
+            "median": 2.27937439599998,
+            "p95": 4.73778671530007
+          },
+          "n_images": 22,
+          "omission_count": 73,
+          "verifier_latency": null
+        },
+        "per_stratum": {
+          "ct_scout": {
+            "added_count": 1,
+            "cost": {
+              "mean": 0.0,
+              "sum": 0.0
+            },
+            "diagnostic": {
+              "cer_mean": null,
+              "char_censor_rate": null,
+              "keep_chars_censored": 0,
+              "keep_chars_total": 0,
+              "n_cer_images": 0,
+              "wer_mean": null
+            },
+            "false_redaction_count": 0,
+            "false_redaction_rate": null,
+            "found_count": 0,
+            "gt_total": 0,
+            "keep_exact_match_count": 0,
+            "keep_exact_match_rate": null,
+            "keep_total": 0,
+            "latency": {
+              "mean": 1.3584095149999484,
+              "median": 1.3584095149999484,
+              "p95": 1.4059454369001287
+            },
+            "n_images": 2,
+            "omission_count": 0,
+            "verifier_latency": null
+          },
+          "ct_secondary_capture": {
+            "added_count": 16,
+            "cost": {
+              "mean": 0.0,
+              "sum": 0.0
+            },
+            "diagnostic": {
+              "cer_mean": 0.006230529595015576,
+              "char_censor_rate": 0.045112781954887216,
+              "keep_chars_censored": 12,
+              "keep_chars_total": 266,
+              "n_cer_images": 1,
+              "wer_mean": 0.04081632653061224
+            },
+            "false_redaction_count": 8,
+            "false_redaction_rate": 0.14814814814814814,
+            "found_count": 49,
+            "gt_total": 56,
+            "keep_exact_match_count": 46,
+            "keep_exact_match_rate": 0.8518518518518519,
+            "keep_total": 54,
+            "latency": {
+              "mean": 2.7741304889998446,
+              "median": 2.7741304889998446,
+              "p95": 2.7741304889998446
+            },
+            "n_images": 1,
+            "omission_count": 7,
+            "verifier_latency": null
+          },
+          "mg_2d": {
+            "added_count": 6,
+            "cost": {
+              "mean": 0.0,
+              "sum": 0.0
+            },
+            "diagnostic": {
+              "cer_mean": 0.08333333333333333,
+              "char_censor_rate": 0.5348837209302325,
+              "keep_chars_censored": 23,
+              "keep_chars_total": 43,
+              "n_cer_images": 4,
+              "wer_mean": 0.25
+            },
+            "false_redaction_count": 4,
+            "false_redaction_rate": 0.4,
+            "found_count": 7,
+            "gt_total": 10,
+            "keep_exact_match_count": 6,
+            "keep_exact_match_rate": 0.6,
+            "keep_total": 10,
+            "latency": {
+              "mean": 2.1247988098571438,
+              "median": 2.0509601599999314,
+              "p95": 2.9546909406000395
+            },
+            "n_images": 7,
+            "omission_count": 3,
+            "verifier_latency": null
+          },
+          "mg_tomo": {
+            "added_count": 0,
+            "cost": {
+              "mean": 0.0,
+              "sum": 0.0
+            },
+            "diagnostic": {
+              "cer_mean": null,
+              "char_censor_rate": null,
+              "keep_chars_censored": 0,
+              "keep_chars_total": 0,
+              "n_cer_images": 0,
+              "wer_mean": null
+            },
+            "false_redaction_count": 0,
+            "false_redaction_rate": null,
+            "found_count": 0,
+            "gt_total": 0,
+            "keep_exact_match_count": 0,
+            "keep_exact_match_rate": null,
+            "keep_total": 0,
+            "latency": {
+              "mean": 1.568369599000107,
+              "median": 1.568369599000107,
+              "p95": 1.568369599000107
+            },
+            "n_images": 1,
+            "omission_count": 0,
+            "verifier_latency": null
+          },
+          "us_ge": {
+            "added_count": 19,
+            "cost": {
+              "mean": 0.0,
+              "sum": 0.0
+            },
+            "diagnostic": {
+              "cer_mean": 0.021681982288601038,
+              "char_censor_rate": 0.18591549295774648,
+              "keep_chars_censored": 66,
+              "keep_chars_total": 355,
+              "n_cer_images": 3,
+              "wer_mean": 0.0952991452991453
+            },
+            "false_redaction_count": 32,
+            "false_redaction_rate": 0.24806201550387597,
+            "found_count": 139,
+            "gt_total": 160,
+            "keep_exact_match_count": 97,
+            "keep_exact_match_rate": 0.751937984496124,
+            "keep_total": 129,
+            "latency": {
+              "mean": 2.5011200909999993,
+              "median": 2.4092365369999698,
+              "p95": 3.2464537844000008
+            },
+            "n_images": 3,
+            "omission_count": 21,
+            "verifier_latency": null
+          },
+          "us_philips": {
+            "added_count": 12,
+            "cost": {
+              "mean": 0.0,
+              "sum": 0.0
+            },
+            "diagnostic": {
+              "cer_mean": 0.02727272727272727,
+              "char_censor_rate": 0.1144578313253012,
+              "keep_chars_censored": 19,
+              "keep_chars_total": 166,
+              "n_cer_images": 2,
+              "wer_mean": 0.023809523809523808
+            },
+            "false_redaction_count": 11,
+            "false_redaction_rate": 0.2,
+            "found_count": 58,
+            "gt_total": 68,
+            "keep_exact_match_count": 44,
+            "keep_exact_match_rate": 0.8,
+            "keep_total": 55,
+            "latency": {
+              "mean": 2.5403881145001606,
+              "median": 2.5403881145001606,
+              "p95": 4.425227106350133
+            },
+            "n_images": 2,
+            "omission_count": 10,
+            "verifier_latency": null
+          },
+          "us_samsung": {
+            "added_count": 8,
+            "cost": {
+              "mean": 0.0,
+              "sum": 0.0
+            },
+            "diagnostic": {
+              "cer_mean": 0.05442176870748299,
+              "char_censor_rate": 0.39473684210526316,
+              "keep_chars_censored": 30,
+              "keep_chars_total": 76,
+              "n_cer_images": 1,
+              "wer_mean": 0.1724137931034483
+            },
+            "false_redaction_count": 10,
+            "false_redaction_rate": 0.37037037037037035,
+            "found_count": 29,
+            "gt_total": 35,
+            "keep_exact_match_count": 17,
+            "keep_exact_match_rate": 0.6296296296296297,
+            "keep_total": 27,
+            "latency": {
+              "mean": 3.0450862500001676,
+              "median": 3.0450862500001676,
+              "p95": 3.0450862500001676
+            },
+            "n_images": 1,
+            "omission_count": 6,
+            "verifier_latency": null
+          },
+          "us_siemens": {
+            "added_count": 4,
+            "cost": {
+              "mean": 0.0,
+              "sum": 0.0
+            },
+            "diagnostic": {
+              "cer_mean": 0.05512010113780025,
+              "char_censor_rate": 0.3191489361702128,
+              "keep_chars_censored": 30,
+              "keep_chars_total": 94,
+              "n_cer_images": 2,
+              "wer_mean": 0.26136363636363635
+            },
+            "false_redaction_count": 11,
+            "false_redaction_rate": 0.36666666666666664,
+            "found_count": 30,
+            "gt_total": 34,
+            "keep_exact_match_count": 19,
+            "keep_exact_match_rate": 0.6333333333333333,
+            "keep_total": 30,
+            "latency": {
+              "mean": 3.3467842850000125,
+              "median": 3.3467842850000125,
+              "p95": 7.816868005100128
+            },
+            "n_images": 2,
+            "omission_count": 4,
+            "verifier_latency": null
+          },
+          "us_sonosite": {
+            "added_count": 3,
+            "cost": {
+              "mean": 0.0,
+              "sum": 0.0
+            },
+            "diagnostic": {
+              "cer_mean": 0.04838709677419355,
+              "char_censor_rate": 0.36,
+              "keep_chars_censored": 18,
+              "keep_chars_total": 50,
+              "n_cer_images": 1,
+              "wer_mean": 0.18181818181818182
+            },
+            "false_redaction_count": 5,
+            "false_redaction_rate": 0.4166666666666667,
+            "found_count": 11,
+            "gt_total": 14,
+            "keep_exact_match_count": 7,
+            "keep_exact_match_rate": 0.5833333333333334,
+            "keep_total": 12,
+            "latency": {
+              "mean": 1.6421931109998695,
+              "median": 1.6421931109998695,
+              "p95": 1.6421931109998695
+            },
+            "n_images": 1,
+            "omission_count": 3,
+            "verifier_latency": null
+          },
+          "us_toshiba_canon": {
+            "added_count": 20,
+            "cost": {
+              "mean": 0.0,
+              "sum": 0.0
+            },
+            "diagnostic": {
+              "cer_mean": 0.037269550548258826,
+              "char_censor_rate": 0.27307692307692305,
+              "keep_chars_censored": 71,
+              "keep_chars_total": 260,
+              "n_cer_images": 2,
+              "wer_mean": 0.16025641025641024
+            },
+            "false_redaction_count": 29,
+            "false_redaction_rate": 0.37662337662337664,
+            "found_count": 75,
+            "gt_total": 94,
+            "keep_exact_match_count": 48,
+            "keep_exact_match_rate": 0.6233766233766234,
+            "keep_total": 77,
+            "latency": {
+              "mean": 2.4300864820000925,
+              "median": 2.4300864820000925,
+              "p95": 2.6330044150002436
+            },
+            "n_images": 2,
+            "omission_count": 19,
+            "verifier_latency": null
+          }
+        },
+        "version": "v1.0.1"
+      },
+      "sweep_size": 5,
+      "trials": [
+        {
+          "config": {},
+          "config_hash": "a1df589d1b52",
+          "config_id": "stock",
+          "declared_config": {
+            "bin_thresh": null,
+            "box_thresh": null,
+            "det_arch": "fast_base",
+            "reco_arch": "crnn_vgg16_bn"
+          },
+          "negative_control": {
+            "floor_count": 2,
+            "hallucinations_per_image": 0.4,
+            "n_control_images": 5
+          },
+          "overall": {
+            "added_count": 89,
+            "cost": {
+              "mean": 0.0,
+              "sum": 0.0
+            },
+            "diagnostic": {
+              "cer_mean": 0.046671464574587575,
+              "char_censor_rate": 0.20534351145038168,
+              "keep_chars_censored": 269,
+              "keep_chars_total": 1310,
+              "n_cer_images": 16,
+              "wer_mean": 0.1607378048880512
+            },
+            "false_redaction_count": 110,
+            "false_redaction_rate": 0.27918781725888325,
+            "found_count": 398,
+            "gt_total": 471,
+            "keep_exact_match_count": 284,
+            "keep_exact_match_rate": 0.7208121827411168,
+            "keep_total": 394,
+            "latency": {
+              "mean": 2.3071849174545647,
+              "median": 2.27937439599998,
+              "p95": 4.73778671530007
+            },
+            "n_images": 22,
+            "omission_count": 73,
+            "verifier_latency": null
+          },
+          "per_stratum": {
+            "ct_scout": {
+              "added_count": 1,
+              "cost": {
+                "mean": 0.0,
+                "sum": 0.0
+              },
+              "diagnostic": {
+                "cer_mean": null,
+                "char_censor_rate": null,
+                "keep_chars_censored": 0,
+                "keep_chars_total": 0,
+                "n_cer_images": 0,
+                "wer_mean": null
+              },
+              "false_redaction_count": 0,
+              "false_redaction_rate": null,
+              "found_count": 0,
+              "gt_total": 0,
+              "keep_exact_match_count": 0,
+              "keep_exact_match_rate": null,
+              "keep_total": 0,
+              "latency": {
+                "mean": 1.3584095149999484,
+                "median": 1.3584095149999484,
+                "p95": 1.4059454369001287
+              },
+              "n_images": 2,
+              "omission_count": 0,
+              "verifier_latency": null
+            },
+            "ct_secondary_capture": {
+              "added_count": 16,
+              "cost": {
+                "mean": 0.0,
+                "sum": 0.0
+              },
+              "diagnostic": {
+                "cer_mean": 0.006230529595015576,
+                "char_censor_rate": 0.045112781954887216,
+                "keep_chars_censored": 12,
+                "keep_chars_total": 266,
+                "n_cer_images": 1,
+                "wer_mean": 0.04081632653061224
+              },
+              "false_redaction_count": 8,
+              "false_redaction_rate": 0.14814814814814814,
+              "found_count": 49,
+              "gt_total": 56,
+              "keep_exact_match_count": 46,
+              "keep_exact_match_rate": 0.8518518518518519,
+              "keep_total": 54,
+              "latency": {
+                "mean": 2.7741304889998446,
+                "median": 2.7741304889998446,
+                "p95": 2.7741304889998446
+              },
+              "n_images": 1,
+              "omission_count": 7,
+              "verifier_latency": null
+            },
+            "mg_2d": {
+              "added_count": 6,
+              "cost": {
+                "mean": 0.0,
+                "sum": 0.0
+              },
+              "diagnostic": {
+                "cer_mean": 0.08333333333333333,
+                "char_censor_rate": 0.5348837209302325,
+                "keep_chars_censored": 23,
+                "keep_chars_total": 43,
+                "n_cer_images": 4,
+                "wer_mean": 0.25
+              },
+              "false_redaction_count": 4,
+              "false_redaction_rate": 0.4,
+              "found_count": 7,
+              "gt_total": 10,
+              "keep_exact_match_count": 6,
+              "keep_exact_match_rate": 0.6,
+              "keep_total": 10,
+              "latency": {
+                "mean": 2.1247988098571438,
+                "median": 2.0509601599999314,
+                "p95": 2.9546909406000395
+              },
+              "n_images": 7,
+              "omission_count": 3,
+              "verifier_latency": null
+            },
+            "mg_tomo": {
+              "added_count": 0,
+              "cost": {
+                "mean": 0.0,
+                "sum": 0.0
+              },
+              "diagnostic": {
+                "cer_mean": null,
+                "char_censor_rate": null,
+                "keep_chars_censored": 0,
+                "keep_chars_total": 0,
+                "n_cer_images": 0,
+                "wer_mean": null
+              },
+              "false_redaction_count": 0,
+              "false_redaction_rate": null,
+              "found_count": 0,
+              "gt_total": 0,
+              "keep_exact_match_count": 0,
+              "keep_exact_match_rate": null,
+              "keep_total": 0,
+              "latency": {
+                "mean": 1.568369599000107,
+                "median": 1.568369599000107,
+                "p95": 1.568369599000107
+              },
+              "n_images": 1,
+              "omission_count": 0,
+              "verifier_latency": null
+            },
+            "us_ge": {
+              "added_count": 19,
+              "cost": {
+                "mean": 0.0,
+                "sum": 0.0
+              },
+              "diagnostic": {
+                "cer_mean": 0.021681982288601038,
+                "char_censor_rate": 0.18591549295774648,
+                "keep_chars_censored": 66,
+                "keep_chars_total": 355,
+                "n_cer_images": 3,
+                "wer_mean": 0.0952991452991453
+              },
+              "false_redaction_count": 32,
+              "false_redaction_rate": 0.24806201550387597,
+              "found_count": 139,
+              "gt_total": 160,
+              "keep_exact_match_count": 97,
+              "keep_exact_match_rate": 0.751937984496124,
+              "keep_total": 129,
+              "latency": {
+                "mean": 2.5011200909999993,
+                "median": 2.4092365369999698,
+                "p95": 3.2464537844000008
+              },
+              "n_images": 3,
+              "omission_count": 21,
+              "verifier_latency": null
+            },
+            "us_philips": {
+              "added_count": 12,
+              "cost": {
+                "mean": 0.0,
+                "sum": 0.0
+              },
+              "diagnostic": {
+                "cer_mean": 0.02727272727272727,
+                "char_censor_rate": 0.1144578313253012,
+                "keep_chars_censored": 19,
+                "keep_chars_total": 166,
+                "n_cer_images": 2,
+                "wer_mean": 0.023809523809523808
+              },
+              "false_redaction_count": 11,
+              "false_redaction_rate": 0.2,
+              "found_count": 58,
+              "gt_total": 68,
+              "keep_exact_match_count": 44,
+              "keep_exact_match_rate": 0.8,
+              "keep_total": 55,
+              "latency": {
+                "mean": 2.5403881145001606,
+                "median": 2.5403881145001606,
+                "p95": 4.425227106350133
+              },
+              "n_images": 2,
+              "omission_count": 10,
+              "verifier_latency": null
+            },
+            "us_samsung": {
+              "added_count": 8,
+              "cost": {
+                "mean": 0.0,
+                "sum": 0.0
+              },
+              "diagnostic": {
+                "cer_mean": 0.05442176870748299,
+                "char_censor_rate": 0.39473684210526316,
+                "keep_chars_censored": 30,
+                "keep_chars_total": 76,
+                "n_cer_images": 1,
+                "wer_mean": 0.1724137931034483
+              },
+              "false_redaction_count": 10,
+              "false_redaction_rate": 0.37037037037037035,
+              "found_count": 29,
+              "gt_total": 35,
+              "keep_exact_match_count": 17,
+              "keep_exact_match_rate": 0.6296296296296297,
+              "keep_total": 27,
+              "latency": {
+                "mean": 3.0450862500001676,
+                "median": 3.0450862500001676,
+                "p95": 3.0450862500001676
+              },
+              "n_images": 1,
+              "omission_count": 6,
+              "verifier_latency": null
+            },
+            "us_siemens": {
+              "added_count": 4,
+              "cost": {
+                "mean": 0.0,
+                "sum": 0.0
+              },
+              "diagnostic": {
+                "cer_mean": 0.05512010113780025,
+                "char_censor_rate": 0.3191489361702128,
+                "keep_chars_censored": 30,
+                "keep_chars_total": 94,
+                "n_cer_images": 2,
+                "wer_mean": 0.26136363636363635
+              },
+              "false_redaction_count": 11,
+              "false_redaction_rate": 0.36666666666666664,
+              "found_count": 30,
+              "gt_total": 34,
+              "keep_exact_match_count": 19,
+              "keep_exact_match_rate": 0.6333333333333333,
+              "keep_total": 30,
+              "latency": {
+                "mean": 3.3467842850000125,
+                "median": 3.3467842850000125,
+                "p95": 7.816868005100128
+              },
+              "n_images": 2,
+              "omission_count": 4,
+              "verifier_latency": null
+            },
+            "us_sonosite": {
+              "added_count": 3,
+              "cost": {
+                "mean": 0.0,
+                "sum": 0.0
+              },
+              "diagnostic": {
+                "cer_mean": 0.04838709677419355,
+                "char_censor_rate": 0.36,
+                "keep_chars_censored": 18,
+                "keep_chars_total": 50,
+                "n_cer_images": 1,
+                "wer_mean": 0.18181818181818182
+              },
+              "false_redaction_count": 5,
+              "false_redaction_rate": 0.4166666666666667,
+              "found_count": 11,
+              "gt_total": 14,
+              "keep_exact_match_count": 7,
+              "keep_exact_match_rate": 0.5833333333333334,
+              "keep_total": 12,
+              "latency": {
+                "mean": 1.6421931109998695,
+                "median": 1.6421931109998695,
+                "p95": 1.6421931109998695
+              },
+              "n_images": 1,
+              "omission_count": 3,
+              "verifier_latency": null
+            },
+            "us_toshiba_canon": {
+              "added_count": 20,
+              "cost": {
+                "mean": 0.0,
+                "sum": 0.0
+              },
+              "diagnostic": {
+                "cer_mean": 0.037269550548258826,
+                "char_censor_rate": 0.27307692307692305,
+                "keep_chars_censored": 71,
+                "keep_chars_total": 260,
+                "n_cer_images": 2,
+                "wer_mean": 0.16025641025641024
+              },
+              "false_redaction_count": 29,
+              "false_redaction_rate": 0.37662337662337664,
+              "found_count": 75,
+              "gt_total": 94,
+              "keep_exact_match_count": 48,
+              "keep_exact_match_rate": 0.6233766233766234,
+              "keep_total": 77,
+              "latency": {
+                "mean": 2.4300864820000925,
+                "median": 2.4300864820000925,
+                "p95": 2.6330044150002436
+              },
+              "n_images": 2,
+              "omission_count": 19,
+              "verifier_latency": null
+            }
+          },
+          "version": "v1.0.1"
+        },
+        {
+          "config": {
+            "bin_thresh": 0.3,
+            "box_thresh": 0.1
+          },
+          "config_hash": "0c49d61a22e3",
+          "config_id": "tuned",
+          "declared_config": {
+            "bin_thresh": 0.3,
+            "box_thresh": 0.1,
+            "det_arch": "fast_base",
+            "reco_arch": "crnn_vgg16_bn"
+          },
+          "negative_control": {
+            "floor_count": 2,
+            "hallucinations_per_image": 0.4,
+            "n_control_images": 5
+          },
+          "overall": {
+            "added_count": 87,
+            "cost": {
+              "mean": 0.0,
+              "sum": 0.0
+            },
+            "diagnostic": {
+              "cer_mean": 0.04665675961489878,
+              "char_censor_rate": 0.1969465648854962,
+              "keep_chars_censored": 258,
+              "keep_chars_total": 1310,
+              "n_cer_images": 16,
+              "wer_mean": 0.16065242237438998
+            },
+            "false_redaction_count": 108,
+            "false_redaction_rate": 0.27411167512690354,
+            "found_count": 400,
+            "gt_total": 471,
+            "keep_exact_match_count": 286,
+            "keep_exact_match_rate": 0.7258883248730964,
+            "keep_total": 394,
+            "latency": {
+              "mean": 3.039016761500038,
+              "median": 2.7761167505001367,
+              "p95": 5.734266394499923
+            },
+            "n_images": 22,
+            "omission_count": 71,
+            "verifier_latency": null
+          },
+          "per_stratum": {
+            "ct_scout": {
+              "added_count": 1,
+              "cost": {
+                "mean": 0.0,
+                "sum": 0.0
+              },
+              "diagnostic": {
+                "cer_mean": null,
+                "char_censor_rate": null,
+                "keep_chars_censored": 0,
+                "keep_chars_total": 0,
+                "n_cer_images": 0,
+                "wer_mean": null
+              },
+              "false_redaction_count": 0,
+              "false_redaction_rate": null,
+              "found_count": 0,
+              "gt_total": 0,
+              "keep_exact_match_count": 0,
+              "keep_exact_match_rate": null,
+              "keep_total": 0,
+              "latency": {
+                "mean": 2.0398757715000784,
+                "median": 2.0398757715000784,
+                "p95": 2.054946905550139
+              },
+              "n_images": 2,
+              "omission_count": 0,
+              "verifier_latency": null
+            },
+            "ct_secondary_capture": {
+              "added_count": 16,
+              "cost": {
+                "mean": 0.0,
+                "sum": 0.0
+              },
+              "diagnostic": {
+                "cer_mean": 0.006230529595015576,
+                "char_censor_rate": 0.045112781954887216,
+                "keep_chars_censored": 12,
+                "keep_chars_total": 266,
+                "n_cer_images": 1,
+                "wer_mean": 0.04081632653061224
+              },
+              "false_redaction_count": 8,
+              "false_redaction_rate": 0.14814814814814814,
+              "found_count": 49,
+              "gt_total": 56,
+              "keep_exact_match_count": 46,
+              "keep_exact_match_rate": 0.8518518518518519,
+              "keep_total": 54,
+              "latency": {
+                "mean": 3.9135312489997887,
+                "median": 3.9135312489997887,
+                "p95": 3.9135312489997887
+              },
+              "n_images": 1,
+              "omission_count": 7,
+              "verifier_latency": null
+            },
+            "mg_2d": {
+              "added_count": 5,
+              "cost": {
+                "mean": 0.0,
+                "sum": 0.0
+              },
+              "diagnostic": {
+                "cer_mean": 0.08333333333333333,
+                "char_censor_rate": 0.3488372093023256,
+                "keep_chars_censored": 15,
+                "keep_chars_total": 43,
+                "n_cer_images": 4,
+                "wer_mean": 0.25
+              },
+              "false_redaction_count": 3,
+              "false_redaction_rate": 0.3,
+              "found_count": 8,
+              "gt_total": 10,
+              "keep_exact_match_count": 7,
+              "keep_exact_match_rate": 0.7,
+              "keep_total": 10,
+              "latency": {
+                "mean": 2.6633782105715063,
+                "median": 2.6102489690001676,
+                "p95": 3.188146221400075
+              },
+              "n_images": 7,
+              "omission_count": 2,
+              "verifier_latency": null
+            },
+            "mg_tomo": {
+              "added_count": 0,
+              "cost": {
+                "mean": 0.0,
+                "sum": 0.0
+              },
+              "diagnostic": {
+                "cer_mean": null,
+                "char_censor_rate": null,
+                "keep_chars_censored": 0,
+                "keep_chars_total": 0,
+                "n_cer_images": 0,
+                "wer_mean": null
+              },
+              "false_redaction_count": 0,
+              "false_redaction_rate": null,
+              "found_count": 0,
+              "gt_total": 0,
+              "keep_exact_match_count": 0,
+              "keep_exact_match_rate": null,
+              "keep_total": 0,
+              "latency": {
+                "mean": 2.1261164190000272,
+                "median": 2.1261164190000272,
+                "p95": 2.1261164190000272
+              },
+              "n_images": 1,
+              "omission_count": 0,
+              "verifier_latency": null
+            },
+            "us_ge": {
+              "added_count": 19,
+              "cost": {
+                "mean": 0.0,
+                "sum": 0.0
+              },
+              "diagnostic": {
+                "cer_mean": 0.021603555836927423,
+                "char_censor_rate": 0.17746478873239438,
+                "keep_chars_censored": 63,
+                "keep_chars_total": 355,
+                "n_cer_images": 3,
+                "wer_mean": 0.09484377189295222
+              },
+              "false_redaction_count": 31,
+              "false_redaction_rate": 0.24031007751937986,
+              "found_count": 140,
+              "gt_total": 160,
+              "keep_exact_match_count": 98,
+              "keep_exact_match_rate": 0.7596899224806202,
+              "keep_total": 129,
+              "latency": {
+                "mean": 3.6771603296667004,
+                "median": 3.354239835000044,
+                "p95": 5.26137546599989
+              },
+              "n_images": 3,
+              "omission_count": 20,
+              "verifier_latency": null
+            },
+            "us_philips": {
+              "added_count": 11,
+              "cost": {
+                "mean": 0.0,
+                "sum": 0.0
+              },
+              "diagnostic": {
+                "cer_mean": 0.02727272727272727,
+                "char_censor_rate": 0.1144578313253012,
+                "keep_chars_censored": 19,
+                "keep_chars_total": 166,
+                "n_cer_images": 2,
+                "wer_mean": 0.023809523809523808
+              },
+              "false_redaction_count": 11,
+              "false_redaction_rate": 0.2,
+              "found_count": 58,
+              "gt_total": 68,
+              "keep_exact_match_count": 44,
+              "keep_exact_match_rate": 0.8,
+              "keep_total": 55,
+              "latency": {
+                "mean": 3.0717953725001053,
+                "median": 3.0717953725001053,
+                "p95": 4.044183282849974
+              },
+              "n_images": 2,
+              "omission_count": 10,
+              "verifier_latency": null
+            },
+            "us_samsung": {
+              "added_count": 8,
+              "cost": {
+                "mean": 0.0,
+                "sum": 0.0
+              },
+              "diagnostic": {
+                "cer_mean": 0.05442176870748299,
+                "char_censor_rate": 0.39473684210526316,
+                "keep_chars_censored": 30,
+                "keep_chars_total": 76,
+                "n_cer_images": 1,
+                "wer_mean": 0.1724137931034483
+              },
+              "false_redaction_count": 10,
+              "false_redaction_rate": 0.37037037037037035,
+              "found_count": 29,
+              "gt_total": 35,
+              "keep_exact_match_count": 17,
+              "keep_exact_match_rate": 0.6296296296296297,
+              "keep_total": 27,
+              "latency": {
+                "mean": 3.2347041680000075,
+                "median": 3.2347041680000075,
+                "p95": 3.2347041680000075
+              },
+              "n_images": 1,
+              "omission_count": 6,
+              "verifier_latency": null
+            },
+            "us_siemens": {
+              "added_count": 4,
+              "cost": {
+                "mean": 0.0,
+                "sum": 0.0
+              },
+              "diagnostic": {
+                "cer_mean": 0.05512010113780025,
+                "char_censor_rate": 0.3191489361702128,
+                "keep_chars_censored": 30,
+                "keep_chars_total": 94,
+                "n_cer_images": 2,
+                "wer_mean": 0.26136363636363635
+              },
+              "false_redaction_count": 11,
+              "false_redaction_rate": 0.36666666666666664,
+              "found_count": 30,
+              "gt_total": 34,
+              "keep_exact_match_count": 19,
+              "keep_exact_match_rate": 0.6333333333333333,
+              "keep_total": 30,
+              "latency": {
+                "mean": 4.090953124499947,
+                "median": 4.090953124499947,
+                "p95": 9.157081588349865
+              },
+              "n_images": 2,
+              "omission_count": 4,
+              "verifier_latency": null
+            },
+            "us_sonosite": {
+              "added_count": 3,
+              "cost": {
+                "mean": 0.0,
+                "sum": 0.0
+              },
+              "diagnostic": {
+                "cer_mean": 0.04838709677419355,
+                "char_censor_rate": 0.36,
+                "keep_chars_censored": 18,
+                "keep_chars_total": 50,
+                "n_cer_images": 1,
+                "wer_mean": 0.18181818181818182
+              },
+              "false_redaction_count": 5,
+              "false_redaction_rate": 0.4166666666666667,
+              "found_count": 11,
+              "gt_total": 14,
+              "keep_exact_match_count": 7,
+              "keep_exact_match_rate": 0.5833333333333334,
+              "keep_total": 12,
+              "latency": {
+                "mean": 2.470091120999996,
+                "median": 2.470091120999996,
+                "p95": 2.470091120999996
+              },
+              "n_images": 1,
+              "omission_count": 3,
+              "verifier_latency": null
+            },
+            "us_toshiba_canon": {
+              "added_count": 20,
+              "cost": {
+                "mean": 0.0,
+                "sum": 0.0
+              },
+              "diagnostic": {
+                "cer_mean": 0.037269550548258826,
+                "char_censor_rate": 0.27307692307692305,
+                "keep_chars_censored": 71,
+                "keep_chars_total": 260,
+                "n_cer_images": 2,
+                "wer_mean": 0.16025641025641024
+              },
+              "false_redaction_count": 29,
+              "false_redaction_rate": 0.37662337662337664,
+              "found_count": 75,
+              "gt_total": 94,
+              "keep_exact_match_count": 48,
+              "keep_exact_match_rate": 0.6233766233766234,
+              "keep_total": 77,
+              "latency": {
+                "mean": 3.5167743980000523,
+                "median": 3.5167743980000523,
+                "p95": 3.9335752582999475
+              },
+              "n_images": 2,
+              "omission_count": 19,
+              "verifier_latency": null
+            }
+          },
+          "version": "v1.0.1"
+        },
+        {
+          "config": {
+            "bin_thresh": 0.3,
+            "box_thresh": 0.3
+          },
+          "config_hash": "98ae6f3e303b",
+          "config_id": "tuned",
+          "declared_config": {
+            "bin_thresh": 0.3,
+            "box_thresh": 0.3,
+            "det_arch": "fast_base",
+            "reco_arch": "crnn_vgg16_bn"
+          },
+          "negative_control": {
+            "floor_count": 2,
+            "hallucinations_per_image": 0.4,
+            "n_control_images": 5
+          },
+          "overall": {
+            "added_count": 85,
+            "cost": {
+              "mean": 0.0,
+              "sum": 0.0
+            },
+            "diagnostic": {
+              "cer_mean": 0.04665675961489878,
+              "char_censor_rate": 0.1969465648854962,
+              "keep_chars_censored": 258,
+              "keep_chars_total": 1310,
+              "n_cer_images": 16,
+              "wer_mean": 0.16065242237438998
+            },
+            "false_redaction_count": 108,
+            "false_redaction_rate": 0.27411167512690354,
+            "found_count": 400,
+            "gt_total": 471,
+            "keep_exact_match_count": 286,
+            "keep_exact_match_rate": 0.7258883248730964,
+            "keep_total": 394,
+            "latency": {
+              "mean": 3.0868942547272953,
+              "median": 2.7920154129999446,
+              "p95": 5.935687607349996
+            },
+            "n_images": 22,
+            "omission_count": 71,
+            "verifier_latency": null
+          },
+          "per_stratum": {
+            "ct_scout": {
+              "added_count": 1,
+              "cost": {
+                "mean": 0.0,
+                "sum": 0.0
+              },
+              "diagnostic": {
+                "cer_mean": null,
+                "char_censor_rate": null,
+                "keep_chars_censored": 0,
+                "keep_chars_total": 0,
+                "n_cer_images": 0,
+                "wer_mean": null
+              },
+              "false_redaction_count": 0,
+              "false_redaction_rate": null,
+              "found_count": 0,
+              "gt_total": 0,
+              "keep_exact_match_count": 0,
+              "keep_exact_match_rate": null,
+              "keep_total": 0,
+              "latency": {
+                "mean": 2.0809387179999703,
+                "median": 2.0809387179999703,
+                "p95": 2.1915135513999076
+              },
+              "n_images": 2,
+              "omission_count": 0,
+              "verifier_latency": null
+            },
+            "ct_secondary_capture": {
+              "added_count": 16,
+              "cost": {
+                "mean": 0.0,
+                "sum": 0.0
+              },
+              "diagnostic": {
+                "cer_mean": 0.006230529595015576,
+                "char_censor_rate": 0.045112781954887216,
+                "keep_chars_censored": 12,
+                "keep_chars_total": 266,
+                "n_cer_images": 1,
+                "wer_mean": 0.04081632653061224
+              },
+              "false_redaction_count": 8,
+              "false_redaction_rate": 0.14814814814814814,
+              "found_count": 49,
+              "gt_total": 56,
+              "keep_exact_match_count": 46,
+              "keep_exact_match_rate": 0.8518518518518519,
+              "keep_total": 54,
+              "latency": {
+                "mean": 3.9978023640001084,
+                "median": 3.9978023640001084,
+                "p95": 3.9978023640001084
+              },
+              "n_images": 1,
+              "omission_count": 7,
+              "verifier_latency": null
+            },
+            "mg_2d": {
+              "added_count": 4,
+              "cost": {
+                "mean": 0.0,
+                "sum": 0.0
+              },
+              "diagnostic": {
+                "cer_mean": 0.08333333333333333,
+                "char_censor_rate": 0.3488372093023256,
+                "keep_chars_censored": 15,
+                "keep_chars_total": 43,
+                "n_cer_images": 4,
+                "wer_mean": 0.25
+              },
+              "false_redaction_count": 3,
+              "false_redaction_rate": 0.3,
+              "found_count": 8,
+              "gt_total": 10,
+              "keep_exact_match_count": 7,
+              "keep_exact_match_rate": 0.7,
+              "keep_total": 10,
+              "latency": {
+                "mean": 2.6836991348571115,
+                "median": 2.609865250999974,
+                "p95": 3.4671768906003306
+              },
+              "n_images": 7,
+              "omission_count": 2,
+              "verifier_latency": null
+            },
+            "mg_tomo": {
+              "added_count": 0,
+              "cost": {
+                "mean": 0.0,
+                "sum": 0.0
+              },
+              "diagnostic": {
+                "cer_mean": null,
+                "char_censor_rate": null,
+                "keep_chars_censored": 0,
+                "keep_chars_total": 0,
+                "n_cer_images": 0,
+                "wer_mean": null
+              },
+              "false_redaction_count": 0,
+              "false_redaction_rate": null,
+              "found_count": 0,
+              "gt_total": 0,
+              "keep_exact_match_count": 0,
+              "keep_exact_match_rate": null,
+              "keep_total": 0,
+              "latency": {
+                "mean": 2.181871656000112,
+                "median": 2.181871656000112,
+                "p95": 2.181871656000112
+              },
+              "n_images": 1,
+              "omission_count": 0,
+              "verifier_latency": null
+            },
+            "us_ge": {
+              "added_count": 18,
+              "cost": {
+                "mean": 0.0,
+                "sum": 0.0
+              },
+              "diagnostic": {
+                "cer_mean": 0.021603555836927423,
+                "char_censor_rate": 0.17746478873239438,
+                "keep_chars_censored": 63,
+                "keep_chars_total": 355,
+                "n_cer_images": 3,
+                "wer_mean": 0.09484377189295222
+              },
+              "false_redaction_count": 31,
+              "false_redaction_rate": 0.24031007751937986,
+              "found_count": 140,
+              "gt_total": 160,
+              "keep_exact_match_count": 98,
+              "keep_exact_match_rate": 0.7596899224806202,
+              "keep_total": 129,
+              "latency": {
+                "mean": 3.6185339699998926,
+                "median": 3.3034470719999263,
+                "p95": 5.0519798483996965
+              },
+              "n_images": 3,
+              "omission_count": 20,
+              "verifier_latency": null
+            },
+            "us_philips": {
+              "added_count": 11,
+              "cost": {
+                "mean": 0.0,
+                "sum": 0.0
+              },
+              "diagnostic": {
+                "cer_mean": 0.02727272727272727,
+                "char_censor_rate": 0.1144578313253012,
+                "keep_chars_censored": 19,
+                "keep_chars_total": 166,
+                "n_cer_images": 2,
+                "wer_mean": 0.023809523809523808
+              },
+              "false_redaction_count": 11,
+              "false_redaction_rate": 0.2,
+              "found_count": 58,
+              "gt_total": 68,
+              "keep_exact_match_count": 44,
+              "keep_exact_match_rate": 0.8,
+              "keep_total": 55,
+              "latency": {
+                "mean": 3.1394496670002354,
+                "median": 3.1394496670002354,
+                "p95": 4.242437450800321
+              },
+              "n_images": 2,
+              "omission_count": 10,
+              "verifier_latency": null
+            },
+            "us_samsung": {
+              "added_count": 8,
+              "cost": {
+                "mean": 0.0,
+                "sum": 0.0
+              },
+              "diagnostic": {
+                "cer_mean": 0.05442176870748299,
+                "char_censor_rate": 0.39473684210526316,
+                "keep_chars_censored": 30,
+                "keep_chars_total": 76,
+                "n_cer_images": 1,
+                "wer_mean": 0.1724137931034483
+              },
+              "false_redaction_count": 10,
+              "false_redaction_rate": 0.37037037037037035,
+              "found_count": 29,
+              "gt_total": 35,
+              "keep_exact_match_count": 17,
+              "keep_exact_match_rate": 0.6296296296296297,
+              "keep_total": 27,
+              "latency": {
+                "mean": 3.18195748800008,
+                "median": 3.18195748800008,
+                "p95": 3.18195748800008
+              },
+              "n_images": 1,
+              "omission_count": 6,
+              "verifier_latency": null
+            },
+            "us_siemens": {
+              "added_count": 4,
+              "cost": {
+                "mean": 0.0,
+                "sum": 0.0
+              },
+              "diagnostic": {
+                "cer_mean": 0.05512010113780025,
+                "char_censor_rate": 0.3191489361702128,
+                "keep_chars_censored": 30,
+                "keep_chars_total": 94,
+                "n_cer_images": 2,
+                "wer_mean": 0.26136363636363635
+              },
+              "false_redaction_count": 11,
+              "false_redaction_rate": 0.36666666666666664,
+              "found_count": 30,
+              "gt_total": 34,
+              "keep_exact_match_count": 19,
+              "keep_exact_match_rate": 0.6333333333333333,
+              "keep_total": 30,
+              "latency": {
+                "mean": 4.301689043000124,
+                "median": 4.301689043000124,
+                "p95": 9.504823451599872
+              },
+              "n_images": 2,
+              "omission_count": 4,
+              "verifier_latency": null
+            },
+            "us_sonosite": {
+              "added_count": 3,
+              "cost": {
+                "mean": 0.0,
+                "sum": 0.0
+              },
+              "diagnostic": {
+                "cer_mean": 0.04838709677419355,
+                "char_censor_rate": 0.36,
+                "keep_chars_censored": 18,
+                "keep_chars_total": 50,
+                "n_cer_images": 1,
+                "wer_mean": 0.18181818181818182
+              },
+              "false_redaction_count": 5,
+              "false_redaction_rate": 0.4166666666666667,
+              "found_count": 11,
+              "gt_total": 14,
+              "keep_exact_match_count": 7,
+              "keep_exact_match_rate": 0.5833333333333334,
+              "keep_total": 12,
+              "latency": {
+                "mean": 2.5247553610001887,
+                "median": 2.5247553610001887,
+                "p95": 2.5247553610001887
+              },
+              "n_images": 1,
+              "omission_count": 3,
+              "verifier_latency": null
+            },
+            "us_toshiba_canon": {
+              "added_count": 20,
+              "cost": {
+                "mean": 0.0,
+                "sum": 0.0
+              },
+              "diagnostic": {
+                "cer_mean": 0.037269550548258826,
+                "char_censor_rate": 0.27307692307692305,
+                "keep_chars_censored": 71,
+                "keep_chars_total": 260,
+                "n_cer_images": 2,
+                "wer_mean": 0.16025641025641024
+              },
+              "false_redaction_count": 29,
+              "false_redaction_rate": 0.37662337662337664,
+              "found_count": 75,
+              "gt_total": 94,
+              "keep_exact_match_count": 48,
+              "keep_exact_match_rate": 0.6233766233766234,
+              "keep_total": 77,
+              "latency": {
+                "mean": 3.6698180124999453,
+                "median": 3.6698180124999453,
+                "p95": 3.7465837469504093
+              },
+              "n_images": 2,
+              "omission_count": 19,
+              "verifier_latency": null
+            }
+          },
+          "version": "v1.0.1"
+        },
+        {
+          "config": {
+            "bin_thresh": 0.1,
+            "box_thresh": 0.05
+          },
+          "config_hash": "f1a49bfe575c",
+          "config_id": "tuned",
+          "declared_config": {
+            "bin_thresh": 0.1,
+            "box_thresh": 0.05,
+            "det_arch": "fast_base",
+            "reco_arch": "crnn_vgg16_bn"
+          },
+          "negative_control": {
+            "floor_count": 2,
+            "hallucinations_per_image": 0.4,
+            "n_control_images": 5
+          },
+          "overall": {
+            "added_count": 89,
+            "cost": {
+              "mean": 0.0,
+              "sum": 0.0
+            },
+            "diagnostic": {
+              "cer_mean": 0.046671464574587575,
+              "char_censor_rate": 0.20534351145038168,
+              "keep_chars_censored": 269,
+              "keep_chars_total": 1310,
+              "n_cer_images": 16,
+              "wer_mean": 0.1607378048880512
+            },
+            "false_redaction_count": 110,
+            "false_redaction_rate": 0.27918781725888325,
+            "found_count": 398,
+            "gt_total": 471,
+            "keep_exact_match_count": 284,
+            "keep_exact_match_rate": 0.7208121827411168,
+            "keep_total": 394,
+            "latency": {
+              "mean": 3.1149884766363853,
+              "median": 2.7868246264999925,
+              "p95": 5.734572950899951
+            },
+            "n_images": 22,
+            "omission_count": 73,
+            "verifier_latency": null
+          },
+          "per_stratum": {
+            "ct_scout": {
+              "added_count": 1,
+              "cost": {
+                "mean": 0.0,
+                "sum": 0.0
+              },
+              "diagnostic": {
+                "cer_mean": null,
+                "char_censor_rate": null,
+                "keep_chars_censored": 0,
+                "keep_chars_total": 0,
+                "n_cer_images": 0,
+                "wer_mean": null
+              },
+              "false_redaction_count": 0,
+              "false_redaction_rate": null,
+              "found_count": 0,
+              "gt_total": 0,
+              "keep_exact_match_count": 0,
+              "keep_exact_match_rate": null,
+              "keep_total": 0,
+              "latency": {
+                "mean": 2.0446765474998756,
+                "median": 2.0446765474998756,
+                "p95": 2.264685784250014
+              },
+              "n_images": 2,
+              "omission_count": 0,
+              "verifier_latency": null
+            },
+            "ct_secondary_capture": {
+              "added_count": 16,
+              "cost": {
+                "mean": 0.0,
+                "sum": 0.0
+              },
+              "diagnostic": {
+                "cer_mean": 0.006230529595015576,
+                "char_censor_rate": 0.045112781954887216,
+                "keep_chars_censored": 12,
+                "keep_chars_total": 266,
+                "n_cer_images": 1,
+                "wer_mean": 0.04081632653061224
+              },
+              "false_redaction_count": 8,
+              "false_redaction_rate": 0.14814814814814814,
+              "found_count": 49,
+              "gt_total": 56,
+              "keep_exact_match_count": 46,
+              "keep_exact_match_rate": 0.8518518518518519,
+              "keep_total": 54,
+              "latency": {
+                "mean": 4.194104296000205,
+                "median": 4.194104296000205,
+                "p95": 4.194104296000205
+              },
+              "n_images": 1,
+              "omission_count": 7,
+              "verifier_latency": null
+            },
+            "mg_2d": {
+              "added_count": 6,
+              "cost": {
+                "mean": 0.0,
+                "sum": 0.0
+              },
+              "diagnostic": {
+                "cer_mean": 0.08333333333333333,
+                "char_censor_rate": 0.5348837209302325,
+                "keep_chars_censored": 23,
+                "keep_chars_total": 43,
+                "n_cer_images": 4,
+                "wer_mean": 0.25
+              },
+              "false_redaction_count": 4,
+              "false_redaction_rate": 0.4,
+              "found_count": 7,
+              "gt_total": 10,
+              "keep_exact_match_count": 6,
+              "keep_exact_match_rate": 0.6,
+              "keep_total": 10,
+              "latency": {
+                "mean": 2.7104876965714277,
+                "median": 2.6781211049997182,
+                "p95": 3.371036900800482
+              },
+              "n_images": 7,
+              "omission_count": 3,
+              "verifier_latency": null
+            },
+            "mg_tomo": {
+              "added_count": 0,
+              "cost": {
+                "mean": 0.0,
+                "sum": 0.0
+              },
+              "diagnostic": {
+                "cer_mean": null,
+                "char_censor_rate": null,
+                "keep_chars_censored": 0,
+                "keep_chars_total": 0,
+                "n_cer_images": 0,
+                "wer_mean": null
+              },
+              "false_redaction_count": 0,
+              "false_redaction_rate": null,
+              "found_count": 0,
+              "gt_total": 0,
+              "keep_exact_match_count": 0,
+              "keep_exact_match_rate": null,
+              "keep_total": 0,
+              "latency": {
+                "mean": 2.1329889680000633,
+                "median": 2.1329889680000633,
+                "p95": 2.1329889680000633
+              },
+              "n_images": 1,
+              "omission_count": 0,
+              "verifier_latency": null
+            },
+            "us_ge": {
+              "added_count": 19,
+              "cost": {
+                "mean": 0.0,
+                "sum": 0.0
+              },
+              "diagnostic": {
+                "cer_mean": 0.021681982288601038,
+                "char_censor_rate": 0.18591549295774648,
+                "keep_chars_censored": 66,
+                "keep_chars_total": 355,
+                "n_cer_images": 3,
+                "wer_mean": 0.0952991452991453
+              },
+              "false_redaction_count": 32,
+              "false_redaction_rate": 0.24806201550387597,
+              "found_count": 139,
+              "gt_total": 160,
+              "keep_exact_match_count": 97,
+              "keep_exact_match_rate": 0.751937984496124,
+              "keep_total": 129,
+              "latency": {
+                "mean": 3.6828930780000824,
+                "median": 3.4657606969999506,
+                "p95": 5.093539130600584
+              },
+              "n_images": 3,
+              "omission_count": 21,
+              "verifier_latency": null
+            },
+            "us_philips": {
+              "added_count": 12,
+              "cost": {
+                "mean": 0.0,
+                "sum": 0.0
+              },
+              "diagnostic": {
+                "cer_mean": 0.02727272727272727,
+                "char_censor_rate": 0.1144578313253012,
+                "keep_chars_censored": 19,
+                "keep_chars_total": 166,
+                "n_cer_images": 2,
+                "wer_mean": 0.023809523809523808
+              },
+              "false_redaction_count": 11,
+              "false_redaction_rate": 0.2,
+              "found_count": 58,
+              "gt_total": 68,
+              "keep_exact_match_count": 44,
+              "keep_exact_match_rate": 0.8,
+              "keep_total": 55,
+              "latency": {
+                "mean": 3.2064135715002067,
+                "median": 3.2064135715002067,
+                "p95": 4.610423576349945
+              },
+              "n_images": 2,
+              "omission_count": 10,
+              "verifier_latency": null
+            },
+            "us_samsung": {
+              "added_count": 8,
+              "cost": {
+                "mean": 0.0,
+                "sum": 0.0
+              },
+              "diagnostic": {
+                "cer_mean": 0.05442176870748299,
+                "char_censor_rate": 0.39473684210526316,
+                "keep_chars_censored": 30,
+                "keep_chars_total": 76,
+                "n_cer_images": 1,
+                "wer_mean": 0.1724137931034483
+              },
+              "false_redaction_count": 10,
+              "false_redaction_rate": 0.37037037037037035,
+              "found_count": 29,
+              "gt_total": 35,
+              "keep_exact_match_count": 17,
+              "keep_exact_match_rate": 0.6296296296296297,
+              "keep_total": 27,
+              "latency": {
+                "mean": 3.29055134500004,
+                "median": 3.29055134500004,
+                "p95": 3.29055134500004
+              },
+              "n_images": 1,
+              "omission_count": 6,
+              "verifier_latency": null
+            },
+            "us_siemens": {
+              "added_count": 4,
+              "cost": {
+                "mean": 0.0,
+                "sum": 0.0
+              },
+              "diagnostic": {
+                "cer_mean": 0.05512010113780025,
+                "char_censor_rate": 0.3191489361702128,
+                "keep_chars_censored": 30,
+                "keep_chars_total": 94,
+                "n_cer_images": 2,
+                "wer_mean": 0.26136363636363635
+              },
+              "false_redaction_count": 11,
+              "false_redaction_rate": 0.36666666666666664,
+              "found_count": 30,
+              "gt_total": 34,
+              "keep_exact_match_count": 19,
+              "keep_exact_match_rate": 0.6333333333333333,
+              "keep_total": 30,
+              "latency": {
+                "mean": 4.178474940000115,
+                "median": 4.178474940000115,
+                "p95": 9.030079352099506
+              },
+              "n_images": 2,
+              "omission_count": 4,
+              "verifier_latency": null
+            },
+            "us_sonosite": {
+              "added_count": 3,
+              "cost": {
+                "mean": 0.0,
+                "sum": 0.0
+              },
+              "diagnostic": {
+                "cer_mean": 0.04838709677419355,
+                "char_censor_rate": 0.36,
+                "keep_chars_censored": 18,
+                "keep_chars_total": 50,
+                "n_cer_images": 1,
+                "wer_mean": 0.18181818181818182
+              },
+              "false_redaction_count": 5,
+              "false_redaction_rate": 0.4166666666666667,
+              "found_count": 11,
+              "gt_total": 14,
+              "keep_exact_match_count": 7,
+              "keep_exact_match_rate": 0.5833333333333334,
+              "keep_total": 12,
+              "latency": {
+                "mean": 2.5329857799997626,
+                "median": 2.5329857799997626,
+                "p95": 2.5329857799997626
+              },
+              "n_images": 1,
+              "omission_count": 3,
+              "verifier_latency": null
+            },
+            "us_toshiba_canon": {
+              "added_count": 20,
+              "cost": {
+                "mean": 0.0,
+                "sum": 0.0
+              },
+              "diagnostic": {
+                "cer_mean": 0.037269550548258826,
+                "char_censor_rate": 0.27307692307692305,
+                "keep_chars_censored": 71,
+                "keep_chars_total": 260,
+                "n_cer_images": 2,
+                "wer_mean": 0.16025641025641024
+              },
+              "false_redaction_count": 29,
+              "false_redaction_rate": 0.37662337662337664,
+              "found_count": 75,
+              "gt_total": 94,
+              "keep_exact_match_count": 48,
+              "keep_exact_match_rate": 0.6233766233766234,
+              "keep_total": 77,
+              "latency": {
+                "mean": 3.748946434499885,
+                "median": 3.748946434499885,
+                "p95": 3.8313726109499386
+              },
+              "n_images": 2,
+              "omission_count": 19,
+              "verifier_latency": null
+            }
+          },
+          "version": "v1.0.1"
+        },
+        {
+          "config": {
+            "bin_thresh": 0.5,
+            "box_thresh": 0.3
+          },
+          "config_hash": "ebcb518ce354",
+          "config_id": "tuned",
+          "declared_config": {
+            "bin_thresh": 0.5,
+            "box_thresh": 0.3,
+            "det_arch": "fast_base",
+            "reco_arch": "crnn_vgg16_bn"
+          },
+          "negative_control": {
+            "floor_count": 2,
+            "hallucinations_per_image": 0.4,
+            "n_control_images": 5
+          },
+          "overall": {
+            "added_count": 85,
+            "cost": {
+              "mean": 0.0,
+              "sum": 0.0
+            },
+            "diagnostic": {
+              "cer_mean": 0.04665675961489878,
+              "char_censor_rate": 0.1969465648854962,
+              "keep_chars_censored": 258,
+              "keep_chars_total": 1310,
+              "n_cer_images": 16,
+              "wer_mean": 0.16065242237438998
+            },
+            "false_redaction_count": 108,
+            "false_redaction_rate": 0.27411167512690354,
+            "found_count": 400,
+            "gt_total": 471,
+            "keep_exact_match_count": 286,
+            "keep_exact_match_rate": 0.7258883248730964,
+            "keep_total": 394,
+            "latency": {
+              "mean": 3.0995699703181883,
+              "median": 2.835431615500056,
+              "p95": 6.18195983899991
+            },
+            "n_images": 22,
+            "omission_count": 71,
+            "verifier_latency": null
+          },
+          "per_stratum": {
+            "ct_scout": {
+              "added_count": 1,
+              "cost": {
+                "mean": 0.0,
+                "sum": 0.0
+              },
+              "diagnostic": {
+                "cer_mean": null,
+                "char_censor_rate": null,
+                "keep_chars_censored": 0,
+                "keep_chars_total": 0,
+                "n_cer_images": 0,
+                "wer_mean": null
+              },
+              "false_redaction_count": 0,
+              "false_redaction_rate": null,
+              "found_count": 0,
+              "gt_total": 0,
+              "keep_exact_match_count": 0,
+              "keep_exact_match_rate": null,
+              "keep_total": 0,
+              "latency": {
+                "mean": 2.132322960500005,
+                "median": 2.132322960500005,
+                "p95": 2.366954579150115
+              },
+              "n_images": 2,
+              "omission_count": 0,
+              "verifier_latency": null
+            },
+            "ct_secondary_capture": {
+              "added_count": 16,
+              "cost": {
+                "mean": 0.0,
+                "sum": 0.0
+              },
+              "diagnostic": {
+                "cer_mean": 0.006230529595015576,
+                "char_censor_rate": 0.045112781954887216,
+                "keep_chars_censored": 12,
+                "keep_chars_total": 266,
+                "n_cer_images": 1,
+                "wer_mean": 0.04081632653061224
+              },
+              "false_redaction_count": 8,
+              "false_redaction_rate": 0.14814814814814814,
+              "found_count": 49,
+              "gt_total": 56,
+              "keep_exact_match_count": 46,
+              "keep_exact_match_rate": 0.8518518518518519,
+              "keep_total": 54,
+              "latency": {
+                "mean": 4.015620531999957,
+                "median": 4.015620531999957,
+                "p95": 4.015620531999957
+              },
+              "n_images": 1,
+              "omission_count": 7,
+              "verifier_latency": null
+            },
+            "mg_2d": {
+              "added_count": 4,
+              "cost": {
+                "mean": 0.0,
+                "sum": 0.0
+              },
+              "diagnostic": {
+                "cer_mean": 0.08333333333333333,
+                "char_censor_rate": 0.3488372093023256,
+                "keep_chars_censored": 15,
+                "keep_chars_total": 43,
+                "n_cer_images": 4,
+                "wer_mean": 0.25
+              },
+              "false_redaction_count": 3,
+              "false_redaction_rate": 0.3,
+              "found_count": 8,
+              "gt_total": 10,
+              "keep_exact_match_count": 7,
+              "keep_exact_match_rate": 0.7,
+              "keep_total": 10,
+              "latency": {
+                "mean": 2.652858352714312,
+                "median": 2.63175831999979,
+                "p95": 3.11636552439968
+              },
+              "n_images": 7,
+              "omission_count": 2,
+              "verifier_latency": null
+            },
+            "mg_tomo": {
+              "added_count": 0,
+              "cost": {
+                "mean": 0.0,
+                "sum": 0.0
+              },
+              "diagnostic": {
+                "cer_mean": null,
+                "char_censor_rate": null,
+                "keep_chars_censored": 0,
+                "keep_chars_total": 0,
+                "n_cer_images": 0,
+                "wer_mean": null
+              },
+              "false_redaction_count": 0,
+              "false_redaction_rate": null,
+              "found_count": 0,
+              "gt_total": 0,
+              "keep_exact_match_count": 0,
+              "keep_exact_match_rate": null,
+              "keep_total": 0,
+              "latency": {
+                "mean": 2.0573175469999114,
+                "median": 2.0573175469999114,
+                "p95": 2.0573175469999114
+              },
+              "n_images": 1,
+              "omission_count": 0,
+              "verifier_latency": null
+            },
+            "us_ge": {
+              "added_count": 18,
+              "cost": {
+                "mean": 0.0,
+                "sum": 0.0
+              },
+              "diagnostic": {
+                "cer_mean": 0.021603555836927423,
+                "char_censor_rate": 0.17746478873239438,
+                "keep_chars_censored": 63,
+                "keep_chars_total": 355,
+                "n_cer_images": 3,
+                "wer_mean": 0.09484377189295222
+              },
+              "false_redaction_count": 31,
+              "false_redaction_rate": 0.24031007751937986,
+              "found_count": 140,
+              "gt_total": 160,
+              "keep_exact_match_count": 98,
+              "keep_exact_match_rate": 0.7596899224806202,
+              "keep_total": 129,
+              "latency": {
+                "mean": 3.709225108333309,
+                "median": 3.4703509710002436,
+                "p95": 4.994927151599586
+              },
+              "n_images": 3,
+              "omission_count": 20,
+              "verifier_latency": null
+            },
+            "us_philips": {
+              "added_count": 11,
+              "cost": {
+                "mean": 0.0,
+                "sum": 0.0
+              },
+              "diagnostic": {
+                "cer_mean": 0.02727272727272727,
+                "char_censor_rate": 0.1144578313253012,
+                "keep_chars_censored": 19,
+                "keep_chars_total": 166,
+                "n_cer_images": 2,
+                "wer_mean": 0.023809523809523808
+              },
+              "false_redaction_count": 11,
+              "false_redaction_rate": 0.2,
+              "found_count": 58,
+              "gt_total": 68,
+              "keep_exact_match_count": 44,
+              "keep_exact_match_rate": 0.8,
+              "keep_total": 55,
+              "latency": {
+                "mean": 3.1291766105000534,
+                "median": 3.1291766105000534,
+                "p95": 3.9777543441493437
+              },
+              "n_images": 2,
+              "omission_count": 10,
+              "verifier_latency": null
+            },
+            "us_samsung": {
+              "added_count": 8,
+              "cost": {
+                "mean": 0.0,
+                "sum": 0.0
+              },
+              "diagnostic": {
+                "cer_mean": 0.05442176870748299,
+                "char_censor_rate": 0.39473684210526316,
+                "keep_chars_censored": 30,
+                "keep_chars_total": 76,
+                "n_cer_images": 1,
+                "wer_mean": 0.1724137931034483
+              },
+              "false_redaction_count": 10,
+              "false_redaction_rate": 0.37037037037037035,
+              "found_count": 29,
+              "gt_total": 35,
+              "keep_exact_match_count": 17,
+              "keep_exact_match_rate": 0.6296296296296297,
+              "keep_total": 27,
+              "latency": {
+                "mean": 3.2035242329998255,
+                "median": 3.2035242329998255,
+                "p95": 3.2035242329998255
+              },
+              "n_images": 1,
+              "omission_count": 6,
+              "verifier_latency": null
+            },
+            "us_siemens": {
+              "added_count": 4,
+              "cost": {
+                "mean": 0.0,
+                "sum": 0.0
+              },
+              "diagnostic": {
+                "cer_mean": 0.05512010113780025,
+                "char_censor_rate": 0.3191489361702128,
+                "keep_chars_censored": 30,
+                "keep_chars_total": 94,
+                "n_cer_images": 2,
+                "wer_mean": 0.26136363636363635
+              },
+              "false_redaction_count": 11,
+              "false_redaction_rate": 0.36666666666666664,
+              "found_count": 30,
+              "gt_total": 34,
+              "keep_exact_match_count": 19,
+              "keep_exact_match_rate": 0.6333333333333333,
+              "keep_total": 30,
+              "latency": {
+                "mean": 4.4522085405001235,
+                "median": 4.4522085405001235,
+                "p95": 10.010974635749562
+              },
+              "n_images": 2,
+              "omission_count": 4,
+              "verifier_latency": null
+            },
+            "us_sonosite": {
+              "added_count": 3,
+              "cost": {
+                "mean": 0.0,
+                "sum": 0.0
+              },
+              "diagnostic": {
+                "cer_mean": 0.04838709677419355,
+                "char_censor_rate": 0.36,
+                "keep_chars_censored": 18,
+                "keep_chars_total": 50,
+                "n_cer_images": 1,
+                "wer_mean": 0.18181818181818182
+              },
+              "false_redaction_count": 5,
+              "false_redaction_rate": 0.4166666666666667,
+              "found_count": 11,
+              "gt_total": 14,
+              "keep_exact_match_count": 7,
+              "keep_exact_match_rate": 0.5833333333333334,
+              "keep_total": 12,
+              "latency": {
+                "mean": 2.561550946999887,
+                "median": 2.561550946999887,
+                "p95": 2.561550946999887
+              },
+              "n_images": 1,
+              "omission_count": 3,
+              "verifier_latency": null
+            },
+            "us_toshiba_canon": {
+              "added_count": 20,
+              "cost": {
+                "mean": 0.0,
+                "sum": 0.0
+              },
+              "diagnostic": {
+                "cer_mean": 0.037269550548258826,
+                "char_censor_rate": 0.27307692307692305,
+                "keep_chars_censored": 71,
+                "keep_chars_total": 260,
+                "n_cer_images": 2,
+                "wer_mean": 0.16025641025641024
+              },
+              "false_redaction_count": 29,
+              "false_redaction_rate": 0.37662337662337664,
+              "found_count": 75,
+              "gt_total": 94,
+              "keep_exact_match_count": 48,
+              "keep_exact_match_rate": 0.6233766233766234,
+              "keep_total": 77,
+              "latency": {
+                "mean": 3.613713035500041,
+                "median": 3.613713035500041,
+                "p95": 3.8183474192504034
+              },
+              "n_images": 2,
+              "omission_count": 19,
+              "verifier_latency": null
+            }
+          },
+          "version": "v1.0.1"
+        }
+      ],
+      "version": "v1.0.1",
+      "winner": {
+        "config": {
+          "bin_thresh": 0.3,
+          "box_thresh": 0.1
+        },
+        "config_hash": "0c49d61a22e3",
+        "config_id": "tuned",
+        "declared_config": {
+          "bin_thresh": 0.3,
+          "box_thresh": 0.1,
+          "det_arch": "fast_base",
+          "reco_arch": "crnn_vgg16_bn"
+        },
+        "negative_control": {
+          "floor_count": 2,
+          "hallucinations_per_image": 0.4,
+          "n_control_images": 5
+        },
+        "overall": {
+          "added_count": 87,
+          "cost": {
+            "mean": 0.0,
+            "sum": 0.0
+          },
+          "diagnostic": {
+            "cer_mean": 0.04665675961489878,
+            "char_censor_rate": 0.1969465648854962,
+            "keep_chars_censored": 258,
+            "keep_chars_total": 1310,
+            "n_cer_images": 16,
+            "wer_mean": 0.16065242237438998
+          },
+          "false_redaction_count": 108,
+          "false_redaction_rate": 0.27411167512690354,
+          "found_count": 400,
+          "gt_total": 471,
+          "keep_exact_match_count": 286,
+          "keep_exact_match_rate": 0.7258883248730964,
+          "keep_total": 394,
+          "latency": {
+            "mean": 3.039016761500038,
+            "median": 2.7761167505001367,
+            "p95": 5.734266394499923
+          },
+          "n_images": 22,
+          "omission_count": 71,
+          "verifier_latency": null
+        },
+        "per_stratum": {
+          "ct_scout": {
+            "added_count": 1,
+            "cost": {
+              "mean": 0.0,
+              "sum": 0.0
+            },
+            "diagnostic": {
+              "cer_mean": null,
+              "char_censor_rate": null,
+              "keep_chars_censored": 0,
+              "keep_chars_total": 0,
+              "n_cer_images": 0,
+              "wer_mean": null
+            },
+            "false_redaction_count": 0,
+            "false_redaction_rate": null,
+            "found_count": 0,
+            "gt_total": 0,
+            "keep_exact_match_count": 0,
+            "keep_exact_match_rate": null,
+            "keep_total": 0,
+            "latency": {
+              "mean": 2.0398757715000784,
+              "median": 2.0398757715000784,
+              "p95": 2.054946905550139
+            },
+            "n_images": 2,
+            "omission_count": 0,
+            "verifier_latency": null
+          },
+          "ct_secondary_capture": {
+            "added_count": 16,
+            "cost": {
+              "mean": 0.0,
+              "sum": 0.0
+            },
+            "diagnostic": {
+              "cer_mean": 0.006230529595015576,
+              "char_censor_rate": 0.045112781954887216,
+              "keep_chars_censored": 12,
+              "keep_chars_total": 266,
+              "n_cer_images": 1,
+              "wer_mean": 0.04081632653061224
+            },
+            "false_redaction_count": 8,
+            "false_redaction_rate": 0.14814814814814814,
+            "found_count": 49,
+            "gt_total": 56,
+            "keep_exact_match_count": 46,
+            "keep_exact_match_rate": 0.8518518518518519,
+            "keep_total": 54,
+            "latency": {
+              "mean": 3.9135312489997887,
+              "median": 3.9135312489997887,
+              "p95": 3.9135312489997887
+            },
+            "n_images": 1,
+            "omission_count": 7,
+            "verifier_latency": null
+          },
+          "mg_2d": {
+            "added_count": 5,
+            "cost": {
+              "mean": 0.0,
+              "sum": 0.0
+            },
+            "diagnostic": {
+              "cer_mean": 0.08333333333333333,
+              "char_censor_rate": 0.3488372093023256,
+              "keep_chars_censored": 15,
+              "keep_chars_total": 43,
+              "n_cer_images": 4,
+              "wer_mean": 0.25
+            },
+            "false_redaction_count": 3,
+            "false_redaction_rate": 0.3,
+            "found_count": 8,
+            "gt_total": 10,
+            "keep_exact_match_count": 7,
+            "keep_exact_match_rate": 0.7,
+            "keep_total": 10,
+            "latency": {
+              "mean": 2.6633782105715063,
+              "median": 2.6102489690001676,
+              "p95": 3.188146221400075
+            },
+            "n_images": 7,
+            "omission_count": 2,
+            "verifier_latency": null
+          },
+          "mg_tomo": {
+            "added_count": 0,
+            "cost": {
+              "mean": 0.0,
+              "sum": 0.0
+            },
+            "diagnostic": {
+              "cer_mean": null,
+              "char_censor_rate": null,
+              "keep_chars_censored": 0,
+              "keep_chars_total": 0,
+              "n_cer_images": 0,
+              "wer_mean": null
+            },
+            "false_redaction_count": 0,
+            "false_redaction_rate": null,
+            "found_count": 0,
+            "gt_total": 0,
+            "keep_exact_match_count": 0,
+            "keep_exact_match_rate": null,
+            "keep_total": 0,
+            "latency": {
+              "mean": 2.1261164190000272,
+              "median": 2.1261164190000272,
+              "p95": 2.1261164190000272
+            },
+            "n_images": 1,
+            "omission_count": 0,
+            "verifier_latency": null
+          },
+          "us_ge": {
+            "added_count": 19,
+            "cost": {
+              "mean": 0.0,
+              "sum": 0.0
+            },
+            "diagnostic": {
+              "cer_mean": 0.021603555836927423,
+              "char_censor_rate": 0.17746478873239438,
+              "keep_chars_censored": 63,
+              "keep_chars_total": 355,
+              "n_cer_images": 3,
+              "wer_mean": 0.09484377189295222
+            },
+            "false_redaction_count": 31,
+            "false_redaction_rate": 0.24031007751937986,
+            "found_count": 140,
+            "gt_total": 160,
+            "keep_exact_match_count": 98,
+            "keep_exact_match_rate": 0.7596899224806202,
+            "keep_total": 129,
+            "latency": {
+              "mean": 3.6771603296667004,
+              "median": 3.354239835000044,
+              "p95": 5.26137546599989
+            },
+            "n_images": 3,
+            "omission_count": 20,
+            "verifier_latency": null
+          },
+          "us_philips": {
+            "added_count": 11,
+            "cost": {
+              "mean": 0.0,
+              "sum": 0.0
+            },
+            "diagnostic": {
+              "cer_mean": 0.02727272727272727,
+              "char_censor_rate": 0.1144578313253012,
+              "keep_chars_censored": 19,
+              "keep_chars_total": 166,
+              "n_cer_images": 2,
+              "wer_mean": 0.023809523809523808
+            },
+            "false_redaction_count": 11,
+            "false_redaction_rate": 0.2,
+            "found_count": 58,
+            "gt_total": 68,
+            "keep_exact_match_count": 44,
+            "keep_exact_match_rate": 0.8,
+            "keep_total": 55,
+            "latency": {
+              "mean": 3.0717953725001053,
+              "median": 3.0717953725001053,
+              "p95": 4.044183282849974
+            },
+            "n_images": 2,
+            "omission_count": 10,
+            "verifier_latency": null
+          },
+          "us_samsung": {
+            "added_count": 8,
+            "cost": {
+              "mean": 0.0,
+              "sum": 0.0
+            },
+            "diagnostic": {
+              "cer_mean": 0.05442176870748299,
+              "char_censor_rate": 0.39473684210526316,
+              "keep_chars_censored": 30,
+              "keep_chars_total": 76,
+              "n_cer_images": 1,
+              "wer_mean": 0.1724137931034483
+            },
+            "false_redaction_count": 10,
+            "false_redaction_rate": 0.37037037037037035,
+            "found_count": 29,
+            "gt_total": 35,
+            "keep_exact_match_count": 17,
+            "keep_exact_match_rate": 0.6296296296296297,
+            "keep_total": 27,
+            "latency": {
+              "mean": 3.2347041680000075,
+              "median": 3.2347041680000075,
+              "p95": 3.2347041680000075
+            },
+            "n_images": 1,
+            "omission_count": 6,
+            "verifier_latency": null
+          },
+          "us_siemens": {
+            "added_count": 4,
+            "cost": {
+              "mean": 0.0,
+              "sum": 0.0
+            },
+            "diagnostic": {
+              "cer_mean": 0.05512010113780025,
+              "char_censor_rate": 0.3191489361702128,
+              "keep_chars_censored": 30,
+              "keep_chars_total": 94,
+              "n_cer_images": 2,
+              "wer_mean": 0.26136363636363635
+            },
+            "false_redaction_count": 11,
+            "false_redaction_rate": 0.36666666666666664,
+            "found_count": 30,
+            "gt_total": 34,
+            "keep_exact_match_count": 19,
+            "keep_exact_match_rate": 0.6333333333333333,
+            "keep_total": 30,
+            "latency": {
+              "mean": 4.090953124499947,
+              "median": 4.090953124499947,
+              "p95": 9.157081588349865
+            },
+            "n_images": 2,
+            "omission_count": 4,
+            "verifier_latency": null
+          },
+          "us_sonosite": {
+            "added_count": 3,
+            "cost": {
+              "mean": 0.0,
+              "sum": 0.0
+            },
+            "diagnostic": {
+              "cer_mean": 0.04838709677419355,
+              "char_censor_rate": 0.36,
+              "keep_chars_censored": 18,
+              "keep_chars_total": 50,
+              "n_cer_images": 1,
+              "wer_mean": 0.18181818181818182
+            },
+            "false_redaction_count": 5,
+            "false_redaction_rate": 0.4166666666666667,
+            "found_count": 11,
+            "gt_total": 14,
+            "keep_exact_match_count": 7,
+            "keep_exact_match_rate": 0.5833333333333334,
+            "keep_total": 12,
+            "latency": {
+              "mean": 2.470091120999996,
+              "median": 2.470091120999996,
+              "p95": 2.470091120999996
+            },
+            "n_images": 1,
+            "omission_count": 3,
+            "verifier_latency": null
+          },
+          "us_toshiba_canon": {
+            "added_count": 20,
+            "cost": {
+              "mean": 0.0,
+              "sum": 0.0
+            },
+            "diagnostic": {
+              "cer_mean": 0.037269550548258826,
+              "char_censor_rate": 0.27307692307692305,
+              "keep_chars_censored": 71,
+              "keep_chars_total": 260,
+              "n_cer_images": 2,
+              "wer_mean": 0.16025641025641024
+            },
+            "false_redaction_count": 29,
+            "false_redaction_rate": 0.37662337662337664,
+            "found_count": 75,
+            "gt_total": 94,
+            "keep_exact_match_count": 48,
+            "keep_exact_match_rate": 0.6233766233766234,
+            "keep_total": 77,
+            "latency": {
+              "mean": 3.5167743980000523,
+              "median": 3.5167743980000523,
+              "p95": 3.9335752582999475
+            },
+            "n_images": 2,
+            "omission_count": 19,
+            "verifier_latency": null
+          }
+        },
+        "version": "v1.0.1"
+      }
+    }
+  ],
+  "gt_hash": "1733f78acc03318d2c832fda2b07ee19d47accb916e49b707e7bf7364dfea7df",
+  "gt_name": "dev_v1.csv",
+  "max_stratum_regression": 0.02,
+  "n_images": 22,
+  "rank_direction": "lower",
+  "rank_metric": "false_redaction_rate"
+}

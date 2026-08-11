@@ -1,0 +1,46 @@
+=== Phase 13h — stock vs tuned, dev-slice sweep (PHI-free) ===
+
+dev set            dev_v1.csv  sha256 1733f78acc03318d2c832fda2b07ee19d47accb916e49b707e7bf7364dfea7df
+images             22
+ranked on          false_redaction_rate (lower is better)
+stratum guard      a config is disqualified if any stratum regresses > 0.02
+
+D-13.4: tuned on a dev slice drawn from OUTSIDE gt_v1, so these thresholds were
+chosen without seeing the scored set. The winners below are FROZEN — re-tuning
+after seeing gt_v1 numbers reintroduces the bias the slice was annotated to avoid.
+
+-- doctr v1.0.1 ---------------------------------------------------
+configurations tried: 5
+
+  config_id  hash            false_red  keep_exact   added  omitted   med_ms
+  stock      a1df589d1b52       0.2792      0.7208      89       73     2279
+  tuned      0c49d61a22e3       0.2741      0.7259      87       71     2776
+             {"bin_thresh": 0.3, "box_thresh": 0.1}
+  tuned      98ae6f3e303b       0.2741      0.7259      85       71     2792
+             {"bin_thresh": 0.3, "box_thresh": 0.3}
+  tuned      f1a49bfe575c       0.2792      0.7208      89       73     2787
+             {"bin_thresh": 0.1, "box_thresh": 0.05}
+  tuned      ebcb518ce354       0.2741      0.7259      85       71     2835
+             {"bin_thresh": 0.5, "box_thresh": 0.3}
+
+  WINNER: {"bin_thresh": 0.3, "box_thresh": 0.1}
+    config_hash 0c49d61a22e3
+    false_redaction_rate: 0.2792 (stock) -> 0.2741
+    Report this as its own finding — the delta is not folded into the
+    headline number, and stock and tuned are separate rows, never averaged.
+
+-- per-stratum, winner vs stock ------------------------------------------
+(the pooled number above can improve while a stratum is destroyed — CLAUDE.md §8)
+  doctr:
+    stratum                       stock      tuned      delta
+    ct_scout                        n/a        n/a        n/a
+    ct_secondary_capture         0.1481     0.1481    +0.0000
+    mg_2d                        0.4000     0.3000    +0.1000
+    mg_tomo                         n/a        n/a        n/a
+    us_ge                        0.2481     0.2403    +0.0078
+    us_philips                   0.2000     0.2000    +0.0000
+    us_samsung                   0.3704     0.3704    +0.0000
+    us_siemens                   0.3667     0.3667    +0.0000
+    us_sonosite                  0.4167     0.4167    +0.0000
+    us_toshiba_canon             0.3766     0.3766    +0.0000
+
