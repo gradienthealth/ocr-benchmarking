@@ -32,6 +32,8 @@ if TYPE_CHECKING:  # avoid an import cycle with harness.py; only .w/.h are used 
 PRICES: dict[str, float] = {
     "claude": 5.00 / 1_000_000,   # $/input-token — Claude Opus 4.8 input ($5.00 / 1M)
     "gpt4o": 2.50 / 1_000_000,    # $/input-token — GPT-4o input ($2.50 / 1M)
+    "gemini_in": 1.25 / 1_000_000,   # $/input-token — Gemini 2.5 Pro, prompts <= 200k
+    "gemini_out": 10.00 / 1_000_000,  # $/output-token — Gemini 2.5 Pro, prompts <= 200k
     "cloud": 0.0015,              # $/image — AWS Textract / Google Vision ($1.50 / 1000)
     "self_hosted": 0.0,           # $/image — docTR / PaddleOCR / EasyOCR / Qwen VLM
 }
@@ -40,6 +42,11 @@ _TILE = 512          # GPT-4o high-detail tile edge, in pixels
 _TILE_TOKENS = 170   # tokens per 512x512 tile
 _BASE_TOKENS = 85    # GPT-4o fixed per-image base
 _CLAUDE_DIVISOR = 750  # Anthropic image-token approximation: tokens ~= (w*h) / 750
+
+_GEMINI_SMALL_EDGE = 384    # images with both edges <= this bill as ONE 258-token unit
+_GEMINI_CROP = 768          # larger images are tiled into 768x768 crops
+_GEMINI_IMAGE_TOKENS = 258  # tokens per unit/crop (Gemini 2.0+ image tokenization)
+_GEMINI_PROMPT_TOKENS = 45  # the reader's fixed text instruction, ~45 tokens
 
 
 def _claude_tokens(w: int, h: int) -> int:
@@ -59,10 +66,28 @@ def _gpt4o_tokens(w: int, h: int) -> int:
     return _BASE_TOKENS + _TILE_TOKENS * tiles
 
 
+def _gemini_tokens(w: int, h: int) -> int:
+    """Gemini 2.x image tokens: 258 for a small image, else 258 per 768x768 crop.
+
+    Plus the reader's fixed text instruction. INPUT SIDE ONLY — and for Gemini 2.5 Pro
+    that is a floor, not the bill: thinking tokens are billed as OUTPUT and cannot be
+    switched off, and nothing derivable from `(w, h)` predicts how many there will be.
+    `harness.runners.read_gemini` therefore accumulates the token counts the API actually
+    reports; `usage_summary()["measured_cost_usd"]`, not this estimate, is what the arm
+    should be priced on in any report.
+    """
+    if w <= _GEMINI_SMALL_EDGE and h <= _GEMINI_SMALL_EDGE:
+        units = 1
+    else:
+        units = math.ceil(w / _GEMINI_CROP) * math.ceil(h / _GEMINI_CROP)
+    return _GEMINI_PROMPT_TOKENS + _GEMINI_IMAGE_TOKENS * units
+
+
 # rule -> (resource_fn(w, h) -> units, price_key). One function per pricing rule (D-6.4).
 _RULES: dict[str, tuple[Callable[[int, int], float], str]] = {
     "claude": (_claude_tokens, "claude"),
     "gpt4o": (_gpt4o_tokens, "gpt4o"),
+    "gemini": (_gemini_tokens, "gemini_in"),
     "cloud": (lambda w, h: 1, "cloud"),          # flat per image
     "self_hosted": (lambda w, h: 0, "self_hosted"),  # no marginal cost
 }

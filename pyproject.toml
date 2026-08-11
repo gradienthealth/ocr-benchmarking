@@ -125,3 +125,5 @@ select = ["E", "F", "I", "UP", "B"]
 # threshold sweep are both run by hand from their docstrings.
 "ground_truth/select_dev_slice.py" = ["E501"]
 "experiments/sweep_stock_vs_tuned.py" = ["E501"]
+# Same reason again (Phase 13g): the docstring carries the one-line bench command.
+"experiments/bench_reader_synthetic.py" = ["E501"]
