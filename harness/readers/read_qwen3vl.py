@@ -205,13 +205,11 @@ class Qwen3VLReader(Reader):
         the code does not actually set would be a lie in the identity hash.
         """
         import torch
-        from transformers import AutoModelForImageTextToText, AutoProcessor
+        from transformers import AutoModelForImageTextToText
 
         torch.set_num_threads(self.torch_num_threads)
 
-        processor = AutoProcessor.from_pretrained(
-            self.model_id, revision=self.revision, local_files_only=True
-        )
+        processor = self._ensure_processor()
         model = AutoModelForImageTextToText.from_pretrained(
             self.model_id,
             revision=self.revision,
@@ -221,12 +219,47 @@ class Qwen3VLReader(Reader):
         model.eval()
         return model, processor
 
+    def _ensure_processor(self) -> Any:
+        """The processor ALONE — a few MB of tokenizer and image config, not the 9 GB of weights.
+
+        Split out so `charset()` (and a test of the chat template) can ask a real question of
+        the real checkpoint without materializing a 16 GB fp32 model to answer it.
+        """
+        if self._processor is None:
+            from transformers import AutoProcessor
+
+            self._processor = AutoProcessor.from_pretrained(
+                self.model_id, revision=self.revision, local_files_only=True
+            )
+        return self._processor
+
     def _ensure_loaded(self) -> tuple[Any, Any]:
-        if self._model is None or self._processor is None:
+        if self._model is None:
             self._model, self._processor = self._load()
         return self._model, self._processor
 
     # -- the interface --------------------------------------------------------------------
+
+    def charset(self) -> frozenset[str]:
+        """Single characters this reader can emit, read off the loaded tokenizer.
+
+        Same contract as 13c's recognizer readers, so `tests/test_readers.py`'s shared charset
+        check applies here unchanged — the point of that scaffold is that readers are compared
+        on the same claims, and an exempt reader is how that quietly stops being true.
+
+        A subword tokenizer is not a character dictionary, so this is derived rather than
+        listed: every vocabulary entry that decodes to exactly one character. That is the set
+        the decoder can produce a character from, which is what the check is about. It reads
+        the processor (a few MB of config and merges), not the weights.
+        """
+        processor = self._ensure_processor()
+        tokenizer = getattr(processor, "tokenizer", processor)
+        chars = set()
+        for token_id in range(tokenizer.vocab_size):
+            piece = tokenizer.decode([token_id], skip_special_tokens=True)
+            if len(piece) == 1:
+                chars.add(piece)
+        return frozenset(chars)
 
     def _messages(self) -> list[dict[str, Any]]:
         """The one chat turn every read sends: one image part, then THE prompt. Never two.
