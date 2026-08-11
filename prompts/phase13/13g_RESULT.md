@@ -10,10 +10,33 @@ benchmark venv). Base: `a6b9c95` (13b merged, so the reader path exists).
 | File | What it is |
 | --- | --- |
 | `harness/readers/read_gemini.py` | `GeminiReader(Reader)` + the gate. New. |
-| `tests/test_read_gemini.py` | 36 tests, all offline/synthetic. The gate test is first. |
+| `tests/test_read_gemini.py` | 38 tests, all offline/synthetic. The gate test is first. |
+| `tests/test_readers.py` | registers this arm in the shared scaffold, gated on `GEMINI_LIVE=1`. |
 | `harness/cost.py` | `+ gemini` pricing rule, `+ gemini_in`/`gemini_out` rates. |
 | `experiments/bench_reader_synthetic.py` | Exact-match bench over fixed synthetic crops. New. |
-| `pyproject.toml` | one-line-docstring E501 ignore, same convention as the other run scripts. |
+| `pyproject.toml` | `+ [gemini]` extra (`google-genai==2.17.0`); E501 ignore for the bench. |
+
+**It is a Reader, not a Runner.** It subclasses `harness.reading.Reader`, takes a crop and
+returns a string — the same shape as SVTRv2, docTR-PARSeq and Qwen3-VL. It was originally
+written at `harness/runners/read_gemini.py`, which straddled both conventions (a `read_`
+name in the `runners` directory); it now sits with the other three. **Its numbers belong in
+the Arm C reader table, never in the end-to-end ranking** — every reader in that arm is
+handed oracle boxes, so it is not comparable to an engine that had to find the text itself.
+
+**Registered in the shared scaffold under `GEMINI_LIVE=1`.** Qwen3-VL's opt-in is about
+cost; this one is about egress — reading a crop makes a network call to a BAA-covered
+endpoint, so registering it unconditionally would mean anybody's `pytest` silently billed a
+Google project and sent pixels out of the environment. An opted-in reader that fails to
+import is a failure, not a silent skip. The instance is wired to the digest of exactly the
+one crop the shared tests use, so it can transmit that crop and nothing else.
+
+**One shared claim is exempted, in writing.** The scaffold's version-sourcing check asserts
+`version == importlib.import_module(version_source).__version__`. No installed library
+carries a hosted model's version. `version_source = "google.genai"` would pass the test and
+be wrong — the SDK version says nothing about what the model returns — so the reader is
+named in `VERSION_SOURCE_EXEMPT` with the reason, mirroring `runners/base.py`'s precedent.
+An *accidental* `version_source=None` still fails. The revision is pinned from the response
+instead (§5).
 
 **The gate, in one paragraph.** Every reader is constructed with an explicit `source=` and
 there is no default. `CropSource.REAL` requires `OCR_BAA_CLEARED_GEMINI=1`, compared with
@@ -200,3 +223,56 @@ bending:
 
 Tests: 38 in `tests/test_read_gemini.py` (was 36), suite 546 passed / 28 skipped, ruff clean
 on the files touched.
+
+---
+
+## 6. Running it on real `gt_v1` frames — what a human does, and what does not exist yet
+
+**There is no driver.** `run_reading()` has exactly two callers in the repo: its own tests
+and nothing else. The experiment CLI that wires renders + the frozen `gt.csv` + a reader into
+it is **13i**, which is not built. Setting the gate variable today gets a cleared reader with
+nothing to feed it. `13i_experiment_cli.md` now carries the constraints this arm needs — its
+own `--arm gemini:real` selector that "all arms" does not pick up, an abort if the variable
+or the Vertex project is missing, the negative control before any accuracy number, measured
+rather than estimated cost, and no retry layer.
+
+When 13i exists, clearing the gate is three steps, in this order:
+
+1. Finish the two open boxes in §4 (retention/logging config, named confirmer).
+2. Prove the plumbing on synthetic crops first — it needs no clearance and costs ~$0.05:
+
+```
+GOOGLE_CLOUD_PROJECT=gradient-health-central GOOGLE_CLOUD_LOCATION=us-central1 .venv/bin/python experiments/bench_reader_synthetic.py --reader gemini --show-predictions --out results/reader_synth.json
+```
+
+3. Then, and only then, in a shell that a human typed this into:
+
+```
+OCR_BAA_CLEARED_GEMINI=1 GOOGLE_CLOUD_PROJECT=gradient-health-central GOOGLE_CLOUD_LOCATION=us-central1 .venv/bin/python scripts/run_experiment.py --arm gemini:real --gt ground_truth/gt.csv
+```
+
+That last command is **written against 13i's not-yet-existing surface** and its flags will
+need checking against what 13i actually builds. Arnav runs it, outside Claude's sandbox
+(D-12.3): the Google BAA covers Google, not Claude Code.
+
+Budget for the real pass, extrapolated from the measured synthetic run: 2351 tokens at
+7.71 s/crop and $0.0028/crop is roughly **5 hours and $6.50**, against about 3 minutes and
+$0 for a local reader.
+
+---
+
+## 7. Outstanding
+
+- **Two D-12.1 boxes are open** (§4): Vertex prompt-logging/caching confirmed off for the
+  project, and a named confirmer + date on the covered-product statement.
+- **No driver for real frames** — blocked on 13i, above.
+- **Negative control not run for this arm.** plan.md requires every generative arm to clear
+  the blank-frame hallucination floor *before* its accuracy numbers are believed, and this
+  arm is generative. `experiments/reader_negative_control.py` (13d) exists and is the right
+  vehicle; it has not been pointed at this reader. **Its 94.4% should not be quoted in the
+  final report until it has.**
+- **Cost estimator known-inaccurate here** — measured 1676 input tokens/crop against ~303
+  estimated. Priced on measured usage, so nothing downstream is wrong; deliberately not
+  retuned to match one run.
+- **Version identity is an alias**, not a revision (§5). The run date is part of it.
+- **Synthetic numbers only.** n=18 clean fixture crops. Not a `gt_v1` result.
