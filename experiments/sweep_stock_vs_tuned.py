@@ -23,6 +23,21 @@ Two guards enforce that, because the failure is silent and permanent:
 Neither has an override flag. A `--force` here would be a flag whose only use is to void
 every number the project reports.
 
+PICKING THE METRIC AFTER THE FACT — `--from-report`
+---------------------------------------------------------------------------------
+Which metric ranks the configs is an open question (RANK_METRICS below), and the honest
+answer is "look at the numbers first". Every trial's full `overall` and `per_stratum` block
+is in `sweep_report.json`, so the choice does not have to be made before a 2.5-hour sweep:
+
+    .venv/bin/python experiments/sweep_stock_vs_tuned.py --from-report experiments/sweep_dev_v1_doctr --from-report experiments/sweep_dev_v1_paddle --rank-by keep_exact_match_rate --freeze
+
+That re-runs SELECTION ONLY — same `select_from_trials`, no engine constructed, no render
+opened, no `--gt` needed — and freezes the winners under the metric named. Reports may be
+sharded per engine (one process per engine is how this is run, so a crash costs one engine
+instead of all thirteen trials); shards from different dev sets, or two shards claiming the
+same engine, are refused rather than merged. The D-13.4 scored-set guard is re-applied to
+the dev set the report records, so the offline route is not a way around it.
+
 WHAT IT WRITES (all PHI-FREE, all under --out)
 ---------------------------------------------------------------------------------
   sweep_report.txt     the table, also printed
@@ -122,7 +137,87 @@ def guard_not_the_scored_set(gt_path: Path) -> None:
         )
 
 
+def guard_report_not_the_scored_set(gt_name: str, gt_hash: str) -> None:
+    """The same D-13.4 refusal, applied to a report's recorded dev set.
+
+    `--from-report` reaches `freeze_winners` without ever touching `--gt`, so the guard above
+    never runs on that path. Without this, a sweep that WAS run against the scored set could
+    be frozen from its own report — the offline route would be a hole straight through the
+    one rule the module says has no override.
+    """
+    if gt_name == FROZEN_GT.name:
+        raise SweepError(
+            f"the report's dev set is named {gt_name!r} — that is the FROZEN SCORED SET. "
+            "Freezing a config selected on it fits the test set (D-13.4)."
+        )
+    if not FROZEN_GT_HASH.is_file():
+        return
+    frozen = FROZEN_GT_HASH.read_text(encoding="utf-8").strip()
+    if frozen and gt_hash == frozen:
+        raise SweepError(
+            f"the report's dev set has the same sha256 as the frozen gt.csv ({frozen[:12]}...) "
+            "— it IS the scored set under another name. Its winners must not be frozen (D-13.4)."
+        )
+
+
 # --- inputs -----------------------------------------------------------------------------
+
+
+def load_reports(paths: Sequence[Path]) -> dict:
+    """Merge sharded `sweep_report.json` files into one ctx. PHI-free in, PHI-free out.
+
+    Each path is a `--out` directory or the JSON inside it. Sharding by engine is the normal
+    way this sweep is run — the engines are independent and one process per engine gives a
+    write point per engine instead of one after all thirteen trials — so the offline path has
+    to be able to put the shards back together.
+
+    Three things are refused rather than merged, because each would produce a `tuned_configs.json`
+    whose entries were measured on different footing while the file claims a single `dev_set`:
+      * shards recording different dev sets (name, hash, or image count),
+      * the same engine appearing in two shards, which would silently pick one, and
+      * a dev set that is really the frozen scored set (the guard above).
+    """
+    ctxs: list[tuple[Path, dict]] = []
+    for path in paths:
+        json_path = path / "sweep_report.json" if path.is_dir() else path
+        if not json_path.is_file():
+            raise SweepError(
+                f"{json_path} does not exist. --from-report takes a sweep --out directory or "
+                "its sweep_report.json; a shard that has not finished has not written one yet."
+            )
+        ctxs.append((json_path, json.loads(json_path.read_text(encoding="utf-8"))))
+
+    identity = {k: ctxs[0][1].get(k) for k in ("gt_name", "gt_hash", "n_images")}
+    for json_path, ctx in ctxs[1:]:
+        other = {k: ctx.get(k) for k in ("gt_name", "gt_hash", "n_images")}
+        if other != identity:
+            raise SweepError(
+                f"{json_path} was swept against a different dev set ({other}) than "
+                f"{ctxs[0][0]} ({identity}). Freezing across them would write one dev_set "
+                "into tuned_configs.json while its entries came from two."
+            )
+
+    guard_report_not_the_scored_set(identity["gt_name"], identity["gt_hash"])
+
+    engines: list[dict] = []
+    seen: dict[str, Path] = {}
+    for json_path, ctx in ctxs:
+        for res in ctx.get("engines", []):
+            name = res["engine"]
+            if name in seen:
+                raise SweepError(
+                    f"{name} appears in both {seen[name]} and {json_path}. Which measurement "
+                    "wins is not a choice this script may make silently — pass one of them."
+                )
+            seen[name] = json_path
+            engines.append(res)
+    if not engines:
+        raise SweepError(f"no engine results in {[str(p) for p, _ in ctxs]}")
+
+    merged = dict(identity)
+    merged["engines"] = engines
+    merged["source_reports"] = [str(p) for p, _ in ctxs]
+    return merged
 
 
 def read_render_manifest(renders_dir: Path) -> dict[str, dict[str, int]]:
@@ -347,6 +442,27 @@ def sweep_engine(
             "negative_control": agg["negative_control"],
         })
 
+    return select_from_trials(engine, trials, metric, tol, dropped)
+
+
+def select_from_trials(
+    engine: str,
+    trials: list[dict],
+    metric: str,
+    tol: float,
+    dropped: int = 0,
+) -> dict:
+    """Choose the winner among already-measured `trials`. Pure — builds no engine, reads no pixel.
+
+    Split out of `sweep_engine` so `--from-report` can re-run selection over trials that were
+    measured in an earlier run. Selection reads only `config_id`, `overall` and `per_stratum`,
+    and `sweep_report.json` carries all three — so re-ranking under the other metric costs a
+    file read instead of a second sweep of every engine.
+
+    Both callers go through this one function on purpose. A second implementation for the
+    offline path is exactly how the printed report and the frozen `tuned_configs.json` would
+    come to disagree about which config won, with nothing to flag the divergence.
+    """
     stock = next((t for t in trials if t["config_id"] == "stock"), None)
     if stock is None:
         raise SweepError(
@@ -524,6 +640,14 @@ def freeze_winners(ctx: dict, path: Path) -> list[str]:
     doc["dev_set"] = {"csv": ctx["gt_name"], "sha256": ctx["gt_hash"], "n_images": ctx["n_images"]}
     doc["rank_metric"] = ctx["rank_metric"]
 
+    # Where the selection happened. Popped when absent for the same reason a winner-less
+    # engine's entry is deleted rather than left: a stale "reselected offline from these
+    # shards" line sitting above freshly measured winners describes a run that did not happen.
+    if ctx.get("source_reports"):
+        doc["selected_offline_from"] = list(ctx["source_reports"])
+    else:
+        doc.pop("selected_offline_from", None)
+
     written = []
     for res in ctx["engines"]:
         if res["engine"] == "easyocr":
@@ -557,13 +681,19 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    ap.add_argument("--renders", type=Path, required=True,
+    # The four PHI inputs and --out are required to SWEEP and meaningless to --from-report,
+    # which reads finished reports and builds no engine. argparse cannot express "required
+    # unless"; main() enforces it so the error names the missing flag instead of a stack trace.
+    ap.add_argument("--renders", type=Path, default=None,
                     help="dev-slice renders dir (with render_manifest.csv)")
-    ap.add_argument("--gt", type=Path, required=True,
+    ap.add_argument("--gt", type=Path, default=None,
                     help="the DEV slice csv — never ground_truth/gt.csv")
-    ap.add_argument("--backmap", type=Path, required=True, help="10b's image_id -> series_uid map")
-    ap.add_argument("--manifest", type=Path, required=True, help="the canonical manifest.csv")
-    ap.add_argument("--out", type=Path, required=True, help="PHI-free report dir")
+    ap.add_argument("--backmap", type=Path, default=None, help="10b's image_id -> series_uid map")
+    ap.add_argument("--manifest", type=Path, default=None, help="the canonical manifest.csv")
+    ap.add_argument("--out", type=Path, default=None, help="PHI-free report dir")
+    ap.add_argument("--from-report", type=Path, action="append", default=None, metavar="PATH",
+                    help="re-select winners from finished sweep_report.json shards instead of "
+                         "sweeping; repeatable. Runs no engine and reads no pixel.")
     ap.add_argument("--engine", action="append", choices=ENGINES, default=None,
                     help="repeatable; default all three")
     ap.add_argument("--rank-by", choices=sorted(RANK_METRICS), default="false_redaction_rate")
@@ -571,13 +701,45 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
                     help="disqualify a config regressing any stratum by more than this")
     ap.add_argument("--budget", type=int, default=None,
                     help="max configs per engine; equal across engines, and disclosed")
-    ap.add_argument("--freeze", action="store_true",
-                    help=f"write the winners into {TUNED_CONFIGS.relative_to(REPO_ROOT)}")
+    # `.relative_to` raises when the constant has been redirected outside the repo (a test
+    # pointing it at tmp_path), which would turn --help into a traceback.
+    shown = (TUNED_CONFIGS.relative_to(REPO_ROOT)
+             if TUNED_CONFIGS.is_relative_to(REPO_ROOT) else TUNED_CONFIGS)
+    ap.add_argument("--freeze", action="store_true", help=f"write the winners into {shown}")
     return ap.parse_args(argv)
 
 
-def main(argv: Sequence[str] | None = None) -> int:
-    args = _parse_args(argv)
+def _reselect(args: argparse.Namespace) -> dict:
+    """`--from-report`: re-rank finished trials under `--rank-by`. No engine, no pixel, no GT."""
+    merged = load_reports(args.from_report)
+    wanted = set(args.engine or [])
+    results = [
+        select_from_trials(res["engine"], res["trials"], args.rank_by,
+                           args.max_stratum_regression,
+                           res.get("grid_truncated_by_budget", 0))
+        for res in merged["engines"]
+        if not wanted or res["engine"] in wanted
+    ]
+    if not results:
+        raise SweepError(
+            f"--engine {sorted(wanted)} selected none of the engines in these reports "
+            f"({sorted(r['engine'] for r in merged['engines'])})."
+        )
+    return {
+        **{k: merged[k] for k in ("gt_name", "gt_hash", "n_images")},
+        "rank_metric": args.rank_by,
+        "rank_direction": RANK_METRICS[args.rank_by],
+        "max_stratum_regression": args.max_stratum_regression,
+        "source_reports": merged["source_reports"],
+        "engines": results,
+    }
+
+
+def _sweep(args: argparse.Namespace) -> dict:
+    """The measuring path: build every engine at every config and score the dev slice."""
+    missing = [f"--{n}" for n in ("renders", "gt", "backmap", "manifest") if getattr(args, n) is None]
+    if missing:
+        raise SweepError(f"sweeping needs {', '.join(missing)} (or pass --from-report instead)")
 
     # FIRST, before any engine is built or any pixel is read.
     guard_not_the_scored_set(args.gt)
@@ -594,7 +756,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         for engine in engines
     ]
 
-    ctx = {
+    return {
         "gt_name": args.gt.name,
         "gt_hash": sha256_file(args.gt),
         "n_images": len(images),
@@ -604,13 +766,31 @@ def main(argv: Sequence[str] | None = None) -> int:
         "engines": results,
     }
 
-    args.out.mkdir(parents=True, exist_ok=True)
+
+def main(argv: Sequence[str] | None = None) -> int:
+    args = _parse_args(argv)
+
+    offline = bool(args.from_report)
+    ctx = _reselect(args) if offline else _sweep(args)
+
     report = build_report(ctx)
-    (args.out / "sweep_report.txt").write_text(report + "\n", encoding="utf-8")
-    (args.out / "sweep_report.json").write_text(
-        json.dumps(ctx, indent=2, sort_keys=True, default=str) + "\n", encoding="utf-8"
-    )
+    if args.out is not None:
+        args.out.mkdir(parents=True, exist_ok=True)
+        # Named apart from a measured sweep's output on the offline path. A re-ranked report
+        # dropped into a shard directory as `sweep_report.json` would be indistinguishable from
+        # the measurement, and would then be re-readable by --from-report as if it were one.
+        stem = "reselected_report" if offline else "sweep_report"
+        (args.out / f"{stem}.txt").write_text(report + "\n", encoding="utf-8")
+        (args.out / f"{stem}.json").write_text(
+            json.dumps(ctx, indent=2, sort_keys=True, default=str) + "\n", encoding="utf-8"
+        )
+    elif not offline:
+        raise SweepError("--out is required when sweeping — the measurement must be written down")
     print(report)
+
+    if offline:
+        print(f"re-ranked on {args.rank_by} from {', '.join(ctx['source_reports'])} "
+              "— no engine was run, no dev-slice pixel was read.")
 
     if args.freeze:
         written = freeze_winners(ctx, TUNED_CONFIGS)
