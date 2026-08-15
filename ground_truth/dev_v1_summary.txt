@@ -1,0 +1,83 @@
+=== dev_v1.csv build summary (PHI-free) ===
+
+dev_v1.csv sha256  1733f78acc03318d2c832fda2b07ee19d47accb916e49b707e7bf7364dfea7df
+dev_v1_set.sha256  897059501160f36d4311d8ea037945971abaa5a9e3fcdcd47969d72d8eb85abe
+                   (scope, not contents — a blank image changes this one only)
+text presence      text_presence_dev_v1.csv  (recall denominator for this set)
+
+-- scored set ------------------------------------------------------------
+drawn 26  ->  rendered 22  ->  reviewed 22  (deferred 0, missing 0)
+  NOTE 4 drawn series never rendered. Recorded, not fatal — they are
+       a fact about finished work, and aborting here would only invite --force.
+frame_idx disagreements vs manifest.middle_frame_index: 4 of 22
+  (the render manifest wins — it records the frame actually annotated)
+
+-- manifest loaded -------------------------------------------------------
+rows 966   ct_axial 66
+  (canonical pull is 966 / 66; anything else means a stale or partial manifest)
+
+-- gt.csv ----------------------------------------------------------------
+rows 471   images with rows 17   images blank 5  (22.7%)
+labels   KEEP 394   PHI 77
+blank-control survivors (ct_axial with zero rows): 0 of 0
+
+per stratum:
+  stratum                       images  w/text    rows    KEEP     PHI
+  ct_scout                           2       0       0       0       0
+  ct_secondary_capture               1       1      56      54       2
+  mg_2d                              7       5      10      10       0
+  mg_tomo                            1       0       0       0       0
+  us_ge                              3       3     160     129      31
+  us_philips                         2       2      68      55      13
+  us_samsung                         1       1      35      27       8
+  us_siemens                         2       2      34      30       4
+  us_sonosite                        1       1      14      12       2
+  us_toshiba_canon                   2       2      94      77      17
+
+per vendor:
+  Agfa                               2 rows
+  Canon                            100 rows
+  Carestream                         1 rows
+  FUJI                               7 rows
+  GE                               160 rows
+  Philips                           68 rows
+  SAMSUNG                           35 rows
+  SIEMENS                           34 rows
+  SonoSite                          14 rows
+  TOSHIBA                           50 rows
+
+WARNING  stratum 'ct_scout' has NO text-bearing images. It has no recall
+         denominator, so any per-image recall mean over it reads a
+         meaningless saturated 100%. Report it as such or exclude it.
+WARNING  stratum 'mg_tomo' has NO text-bearing images. It has no recall
+         denominator, so any per-image recall mean over it reads a
+         meaningless saturated 100%. Report it as such or exclude it.
+
+-- 10d review + seed quality --------------------------------------------
+annotation rounds in the review dir: round 1: 22
+  ALL                          images   22  accepted    2  edited   20  deferred   0  unreviewed   0
+                               seed: unchanged 320  text-fixed 18  box-fixed 0  deleted 650  added 133
+  ct_scout                     images    2  accepted    1  edited    1  deferred   0  unreviewed   0
+                               seed: unchanged 0  text-fixed 0  box-fixed 0  deleted 5  added 0
+  ct_secondary_capture         images    1  accepted    0  edited    1  deferred   0  unreviewed   0
+                               seed: unchanged 54  text-fixed 1  box-fixed 0  deleted 30  added 1
+  mg_2d                        images    7  accepted    0  edited    7  deferred   0  unreviewed   0
+                               seed: unchanged 7  text-fixed 0  box-fixed 0  deleted 172  added 3
+  mg_tomo                      images    1  accepted    1  edited    0  deferred   0  unreviewed   0
+                               seed: unchanged 0  text-fixed 0  box-fixed 0  deleted 0  added 0
+  us_ge                        images    3  accepted    0  edited    3  deferred   0  unreviewed   0
+                               seed: unchanged 88  text-fixed 6  box-fixed 0  deleted 167  added 66
+  us_philips                   images    2  accepted    0  edited    2  deferred   0  unreviewed   0
+                               seed: unchanged 54  text-fixed 1  box-fixed 0  deleted 43  added 13
+  us_samsung                   images    1  accepted    0  edited    1  deferred   0  unreviewed   0
+                               seed: unchanged 25  text-fixed 1  box-fixed 0  deleted 45  added 9
+  us_siemens                   images    2  accepted    0  edited    2  deferred   0  unreviewed   0
+                               seed: unchanged 18  text-fixed 4  box-fixed 0  deleted 72  added 12
+  us_sonosite                  images    1  accepted    0  edited    1  deferred   0  unreviewed   0
+                               seed: unchanged 8  text-fixed 0  box-fixed 0  deleted 15  added 6
+  us_toshiba_canon             images    2  accepted    0  edited    2  deferred   0  unreviewed   0
+                               seed: unchanged 66  text-fixed 5  box-fixed 0  deleted 101  added 23
+
+-- D-10.7 self-agreement -------------------------------------------------
+self-agreement: not yet run (round 2 absent)
+  ~10% of the set gets re-reviewed after a gap into ground_truth/review_r2/.

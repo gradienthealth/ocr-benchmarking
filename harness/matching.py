@@ -24,9 +24,15 @@ Resolved decisions baked in (plan.md Phase 4, resolved 2026-07-08):
 from __future__ import annotations
 
 import dataclasses
-from dataclasses import dataclass
 
-from harness.contract import GTToken, OCROutput, OCRWord, normalize
+from harness.contract import GTToken, Match, MatchResult, OCROutput, OCRWord, normalize
+
+# `Match`/`MatchResult` are DEFINED in contract.py and re-exported here (moved in Phase
+# 13b). They are shared shapes with two producers — this module, which derives them by
+# IoU, and `reading.py`, which is handed the boxes and runs no matcher — so they belong
+# beside the other shapes both sides agree on. Re-exported so `from harness.matching
+# import MatchResult` keeps working for anything that reads them as the matcher's output.
+__all__ = ["BBox", "Match", "MatchResult", "iou", "match"]
 
 # (x0, y0, x1, y1), axis-aligned, TOP-LEFT origin, in PIXELS of the fed image —
 # the shared convention of OCRWord.bbox and GTToken.bbox (see contract.py).
@@ -47,34 +53,6 @@ def iou(a: BBox, b: BBox) -> float:
         # Two zero-area (degenerate) boxes: no overlap is decidable — call it 0.
         return 0.0
     return inter / union
-
-
-@dataclass
-class Match:
-    """One GT token paired with one prediction."""
-
-    gt: GTToken
-    word: OCRWord
-    # The raw prediction exactly as the engine emitted it — un-normalized. On the
-    # box-free path this is the whole blob word, since no per-token prediction exists.
-
-    iou: float | None
-    # None on the box-free path: a substring match carries no location info.
-
-
-@dataclass
-class MatchResult:
-    """What the engine did with each GT token on one image."""
-
-    matches: list[Match]
-    omissions: list[GTToken]  # GT tokens no prediction covered
-    hallucinations: list[OCRWord]  # predictions covering no GT token (the dangerous axis)
-    box_free: bool
-    # True → pairing came from the substring path: lower-confidence, no location,
-    # ranked separately from boxed matches — never mixed into the same ranking.
-
-    iou_thr: float
-    # Threshold this result was computed with; belongs in run metadata (D-4.2).
 
 
 # Content-based sort keys (never input index) covering EVERY field, so ties on

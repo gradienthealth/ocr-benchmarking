@@ -15,7 +15,7 @@ import statistics
 
 import pytest
 
-from harness.aggregate import aggregate
+from harness.aggregate import aggregate, detection_view
 
 
 def _mkrow(**over) -> dict:
@@ -37,6 +37,10 @@ def _mkrow(**over) -> dict:
         model_name="fake-engine",
         # Non-empty by default: aggregate() now rejects a blank version (D-8.4).
         version="0.0.0-fake",
+        # Non-empty by default for the same reason, one dimension over (D-13.5): rows that
+        # all carry a blank config_hash collapse to ONE identity and would be averaged.
+        config_id="fake-stock",
+        config_hash="0000fakehash",
         # None by default: no verifier ran. verifier_elapsed=None is what aggregate() checks
         # to decide whether a row's verifier identity is even relevant (D-9.1) — a row with
         # a real verifier_elapsed but blank identity is what gets rejected, not this default.
@@ -189,6 +193,66 @@ def test_refuses_to_blend_two_engine_versions():
 def test_refuses_to_blend_two_model_names():
     with pytest.raises(ValueError, match="refusing to blend"):
         aggregate([_mkrow(model_name="engineA"), _mkrow(model_name="engineB")])
+
+
+# --- config provenance: the D-13.5 collision ----------------------------------
+# The identity guard above keys on (model_name, version, verifier_*). Two arms of the SAME
+# engine at the SAME version — docTR stock vs tuned vs parseq, PP-OCRv6 stock vs tuned
+# thresholds — satisfy every one of those and were averaged into one meaningless row.
+
+
+def test_refuses_to_blend_two_configs_of_one_engine_version():
+    """The headline D-13.5 bug: same engine, same version, different config.
+
+    Everything the pre-D-13.5 guard could see is identical here — one model_name, one
+    version, no verifier — so the batch sailed through and produced a single averaged row
+    that belonged to neither arm.
+    """
+    stock = _mkrow(config_id="stock", config_hash="aaaaaaaaaaaa")
+    tuned = _mkrow(config_id="tuned", config_hash="bbbbbbbbbbbb")
+    assert stock["model_name"] == tuned["model_name"]
+    assert stock["version"] == tuned["version"]  # indistinguishable before D-13.5
+    with pytest.raises(ValueError, match="refusing to blend"):
+        aggregate([stock, tuned])
+
+
+def test_refuses_to_blend_when_only_the_hash_differs():
+    """A relabelled arm is still a different arm.
+
+    The hash is what actually protects the aggregation: if someone reuses a label but a
+    knob moved, `config()` changes and the digest changes. Catching this is the whole
+    reason the digest — not just the human label — sits in the guard tuple.
+    """
+    with pytest.raises(ValueError, match="refusing to blend"):
+        aggregate([
+            _mkrow(config_id="stock", config_hash="aaaaaaaaaaaa"),
+            _mkrow(config_id="stock", config_hash="cccccccccccc"),
+        ])
+
+
+def test_identical_configs_still_aggregate_together():
+    """Guard against over-tightening: one arm's rows must still merge into one result."""
+    agg = aggregate([_mkrow(), _mkrow(), _mkrow()])
+    assert agg["n_images"] == 3
+
+
+def test_blank_config_hash_rejected_even_though_every_row_agrees():
+    """The same hole D-8.4 closed for versions, one dimension over.
+
+    Rows that all carry config_hash "" form ONE tuple, so the blend check is perfectly
+    satisfied — while the batch carries no config provenance at all and may be two arms
+    concatenated. Hence a separate, earlier check.
+    """
+    rows = [_mkrow(config_hash=""), _mkrow(config_hash="")]
+    assert len({r["config_hash"] for r in rows}) == 1  # the blend check sees no problem
+    with pytest.raises(ValueError, match="no `config_hash`"):
+        aggregate(rows)
+
+
+def test_config_identity_carried_through():
+    agg = aggregate([_mkrow(config_id="parseq", config_hash="dddddddddddd")])
+    assert agg["config_id"] == "parseq"
+    assert agg["config_hash"] == "dddddddddddd"
 
 
 def test_blank_version_rejected_even_though_every_row_agrees():
@@ -378,3 +442,179 @@ def test_aggregation_is_order_independent():
     shuffled = rows[:]
     random.Random(0).shuffle(shuffled)
     assert aggregate(shuffled) == baseline
+
+
+# --- detector-only view (Phase 13e) --------------------------------------------
+# Boxes vs GT at the matcher's IoU bar, strings ignored. The invariant under test is the
+# one the 2026-08-06 `ct_scout` sweep violated: a stratum with no text-bearing images has
+# NO recall denominator, and must read n/a — never a saturated 100% — while predictions on
+# blank frames stay in the hallucination floor instead of being averaged into a rate.
+
+
+def _det_row(**over) -> dict:
+    """A score row carrying the two keys the detector view reads beyond the counts."""
+    row = _mkrow(box_free=False, iou_thr=0.5)
+    row.update(over)
+    return row
+
+
+def test_detection_rates_are_derived_from_the_counts_score_already_exposes():
+    rows = [
+        _det_row(stratum="A", gt_total=4, found_count=3, omission_count=1, added_count=1),
+        _det_row(stratum="A", gt_total=2, found_count=2, omission_count=0, added_count=0),
+    ]
+    g = aggregate(rows)["detection"]["per_stratum"]["A"]
+    assert g["gt_total"] == 6 and g["found_count"] == 5
+    assert g["detection_recall"] == pytest.approx(5 / 6)
+    # precision denominator = every prediction = found + added (greedy 1:1 assignment)
+    assert g["predicted_count"] == 6
+    assert g["detection_precision"] == pytest.approx(5 / 6)
+    assert g["recall_na_reason"] is None and g["precision_na_reason"] is None
+
+
+def test_zero_text_stratum_is_na_with_a_reason_never_a_saturated_100_percent():
+    # ct_scout / mg_tomo in the real set: every image blank, so nothing to find.
+    rows = [
+        _det_row(stratum="mg_tomo", gt_total=0, negative_control=True,
+                 negative_control_floor_count=3, added_count=3),
+        _det_row(stratum="mg_tomo", gt_total=0, negative_control=True),
+        _det_row(stratum="us_ge", gt_total=2, found_count=2, added_count=1),
+    ]
+    g = aggregate(rows)["detection"]["per_stratum"]["mg_tomo"]
+    assert g["n_text_images"] == 0 and g["n_control_images"] == 2
+    assert g["detection_recall"] is None
+    assert g["detection_precision"] is None
+    assert "no boxed text-bearing images" in g["recall_na_reason"]
+    assert "no boxed text-bearing images" in g["precision_na_reason"]
+    # and the rate it is NOT allowed to become:
+    assert g["detection_recall"] != 1.0
+
+
+def test_blank_control_boxes_land_in_the_floor_not_in_recall_or_precision():
+    rows = [
+        _det_row(stratum="ct_axial", gt_total=2, found_count=1, omission_count=1,
+                 added_count=1),
+        _det_row(stratum="ct_axial", gt_total=0, negative_control=True,
+                 negative_control_floor_count=7, added_count=7),
+    ]
+    g = aggregate(rows)["detection"]["per_stratum"]["ct_axial"]
+    # recall: the blank image contributes to neither side of the fraction
+    assert g["gt_total"] == 2 and g["found_count"] == 1
+    assert g["detection_recall"] == pytest.approx(0.5)
+    # precision: the blank image's 7 boxes are NOT in the denominator
+    assert g["added_count"] == 1 and g["predicted_count"] == 2
+    assert g["detection_precision"] == pytest.approx(0.5)
+    # they are here instead
+    assert g["floor_boxes"] == 7
+    assert g["floor_boxes_per_image"] == pytest.approx(7.0)
+
+
+def test_box_free_rows_are_excluded_from_detection_and_counted():
+    # matching.py returns hallucinations=[] on the box-free path unconditionally, so a
+    # box-free row would contribute added_count=0 and read as perfect precision.
+    rows = [
+        _det_row(stratum="A", box_free=True, gt_total=5, found_count=5),
+        _det_row(stratum="A", gt_total=2, found_count=1, omission_count=1, added_count=3),
+    ]
+    g = aggregate(rows)["detection"]["per_stratum"]["A"]
+    assert g["n_box_free_excluded"] == 1
+    assert g["gt_total"] == 2 and g["found_count"] == 1  # box-free row's 5/5 not counted
+    assert g["detection_precision"] == pytest.approx(1 / 4)
+
+
+def test_all_box_free_run_is_na_with_the_box_free_reason():
+    rows = [_det_row(stratum="A", box_free=True, gt_total=3, found_count=3)]
+    g = aggregate(rows)["detection"]["overall"]
+    assert g["detection_recall"] is None and g["detection_precision"] is None
+    assert "box-free" in g["recall_na_reason"]
+    assert "box-free" in g["precision_na_reason"]
+
+
+def test_detection_iou_threshold_is_carried_and_none_when_rows_disagree():
+    same = [_det_row(stratum="A"), _det_row(stratum="A")]
+    assert aggregate(same)["detection"]["iou_thr"] == 0.5
+    mixed = [_det_row(stratum="A"), _det_row(stratum="A", iou_thr=0.75)]
+    assert aggregate(mixed)["detection"]["iou_thr"] is None
+
+
+def test_detection_view_does_not_leak_into_the_end_to_end_ranking_keys():
+    # Three questions, three tables: the detector numbers live under their own key and are
+    # never promoted into the overall stats the engines are ranked on.
+    agg = aggregate([_det_row(stratum="A", gt_total=2, found_count=2, added_count=1)])
+    for banned in ("detection_recall", "detection_precision", "predicted_count"):
+        assert banned not in agg["overall"]
+    assert "detection_recall" in agg["detection"]["overall"]
+
+
+def test_empty_group_na_reasons_do_not_invent_blank_controls():
+    # A group with no rows at all has no text-bearing images AND no controls; the reason
+    # must not assert controls that don't exist.
+    g = aggregate([])["detection"]["overall"]
+    assert g["recall_na_reason"] == "no images in this group"
+    assert g["precision_na_reason"] == "no images in this group"
+
+
+def test_box_free_controls_are_excluded_from_the_detector_floor_and_flagged():
+    # A box-free frame reports no boxes because it structurally cannot, not because none
+    # were invented — counting it would dilute the floor toward zero. So the detector floor
+    # is boxed-only and can legitimately differ from the run-wide negative_control block.
+    rows = [
+        _det_row(stratum="A", gt_total=0, negative_control=True,
+                 negative_control_floor_count=4, added_count=4),
+        _det_row(stratum="A", gt_total=0, negative_control=True, box_free=True),
+    ]
+    agg = aggregate(rows)
+    g = agg["detection"]["overall"]
+    assert g["n_control_images"] == 1 and g["floor_boxes"] == 4
+    assert g["floor_boxes_per_image"] == pytest.approx(4.0)
+    assert g["n_box_free_excluded"] == 1
+    # the run-wide block counts both — the divergence is real and must stay visible
+    assert agg["negative_control"]["n_control_images"] == 2
+
+
+def test_detection_view_refuses_to_pool_two_arms_of_one_engine():
+    # detection_view() is a public rollup in its own right, so it must not be the one door
+    # into this module through which two config arms can be averaged (rule #9, D-13.5).
+    rows = [
+        _det_row(stratum="A", config_id="stock", config_hash="aaa"),
+        _det_row(stratum="A", config_id="tuned", config_hash="bbb"),
+    ]
+    with pytest.raises(ValueError, match="refusing to blend"):
+        detection_view(rows)
+    with pytest.raises(ValueError, match="carry no engine version"):
+        detection_view([_det_row(stratum="A", version="")])
+
+
+def test_na_reason_names_box_free_rows_instead_of_blaming_the_control_set():
+    # A group whose only text-bearing row is box-free is unscoreable because the boxes are
+    # missing — not because every image was a blank control. The reason must say which.
+    rows = [
+        _det_row(stratum="A", box_free=True, gt_total=6, found_count=4, omission_count=2),
+        _det_row(stratum="A", gt_total=0, negative_control=True, added_count=2),
+    ]
+    g = aggregate(rows)["detection"]["per_stratum"]["A"]
+    assert "1 row(s) excluded (no IoU matcher ran)" in g["recall_na_reason"]
+    assert "1 row(s) excluded (no IoU matcher ran)" in g["precision_na_reason"]
+
+
+def test_reading_arm_rows_are_excluded_from_detection_and_counted():
+    # 13b's reading arm is HANDED the GT box and runs no matcher (`iou_thr=None`), so every
+    # GT token is "found" by construction. Counting it would print a saturated 100%
+    # detection recall — the exact failure this table exists to prevent.
+    rows = [
+        _det_row(stratum="A", iou_thr=None, gt_total=9, found_count=9),
+        _det_row(stratum="A", gt_total=4, found_count=2, omission_count=2, added_count=2),
+    ]
+    g = aggregate(rows)["detection"]["per_stratum"]["A"]
+    assert g["n_reading_arm_excluded"] == 1
+    assert g["gt_total"] == 4 and g["found_count"] == 2  # the 9/9 handed boxes are gone
+    assert g["detection_recall"] == pytest.approx(0.5)
+    assert g["detection_precision"] == pytest.approx(0.5)
+
+
+def test_a_pure_reading_arm_run_reports_na_naming_the_reading_arm():
+    g = aggregate([_det_row(stratum="A", iou_thr=None, gt_total=5, found_count=5)])
+    g = g["detection"]["overall"]
+    assert g["detection_recall"] is None and g["detection_precision"] is None
+    assert "reading arm" in g["recall_na_reason"]
+    assert "nothing to detect" in g["recall_na_reason"]

@@ -122,6 +122,8 @@ def test_ocroutput_defaults_box_free_false():
         raw_response={"fake": "payload"},
         model_name="fake-ocr-v0",
         version="fake-0.0.1",
+        config_id="fake-stock",
+        config_hash="0000fakehash",
     )
     assert out.words == words
     assert out.raw_response == {"fake": "payload"}
@@ -156,6 +158,41 @@ def test_ocroutput_rejects_a_blank_version(blank):
             raw_response="fake-raw",
             model_name="fake-ocr-v0",
             version=blank,
+            config_id="fake-stock",
+            config_hash="0000fakehash",
+        )
+
+
+@pytest.mark.parametrize("blank", ["", " ", "\t", "\n  "])
+def test_ocroutput_rejects_a_blank_config_id(blank):
+    """Same argument as the version check, for the arm's human label (D-13.5)."""
+    with pytest.raises(ValueError, match="config_id must be a non-empty"):
+        OCROutput(
+            words=[OCRWord(text="CMFN", bbox=None, confidence=None)],
+            raw_response="fake-raw",
+            model_name="fake-ocr-v0",
+            version="fake-0.0.1",
+            config_id=blank,
+            config_hash="0000fakehash",
+        )
+
+
+@pytest.mark.parametrize("blank", ["", " ", "\t", "\n  "])
+def test_ocroutput_rejects_a_blank_config_hash(blank):
+    """The digest is what stops two arms of one engine version merging (D-13.5).
+
+    Caught here, at construction, rather than only in `aggregate()`: a hand-built
+    `OCROutput` in a script or notebook is exactly how an un-configured row would
+    otherwise reach the aggregation.
+    """
+    with pytest.raises(ValueError, match="config_hash must be a non-empty"):
+        OCROutput(
+            words=[OCRWord(text="CMFN", bbox=None, confidence=None)],
+            raw_response="fake-raw",
+            model_name="fake-ocr-v0",
+            version="fake-0.0.1",
+            config_id="fake-stock",
+            config_hash=blank,
         )
 
 
@@ -165,6 +202,8 @@ def test_ocroutput_box_free_explicit_true():
         raw_response="fake-raw",
         model_name="fake-vlm-v0",
         version="fake-vlm-0.0.1",
+        config_id="fake-stock",
+        config_hash="0000fakehash",
         box_free=True,
     )
     assert out.box_free is True
@@ -241,6 +280,8 @@ def test_ocroutput_is_mutable():
         raw_response="fake-raw",
         model_name="fake-ocr-v0",
         version="fake-0.0.1",
+        config_id="fake-stock",
+        config_hash="0000fakehash",
     )
     # OCROutput is NOT frozen: reassignment and list mutation both succeed.
     out.box_free = True

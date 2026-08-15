@@ -176,6 +176,8 @@ def run_harness(
         row["image_id"] = img.id
         row["model_name"] = out.model_name
         row["version"] = out.version
+        row["config_id"] = out.config_id
+        row["config_hash"] = out.config_hash
         row["verifier_elapsed"] = verifier_elapsed
         row["verifier_model_name"] = verifier_model_name if verifier_active else None
         row["verifier_version"] = verifier_version if verifier_active else None

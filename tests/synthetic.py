@@ -47,6 +47,13 @@ SYNTHETIC_RAW_RESPONSE = {"synthetic": True}
 # version string, so a fixture row can never be mistaken for a measured one.
 SYNTHETIC_VERSION = "0.0.0-synthetic"
 
+# Config identity markers for synthetic outputs (D-13.5). `OCROutput` rejects blanks, and
+# fixtures must pass an explicit marker rather than "" for the same reason as the version
+# above: a batch where every row is blank looks like ONE consistent identity to
+# `aggregate()`. Tests that need two DIFFERENT arms pass their own values.
+SYNTHETIC_CONFIG_ID = "synthetic"
+SYNTHETIC_CONFIG_HASH = "0000synthetic"
+
 
 def _font(size: int) -> ImageFont.FreeTypeFont:
     # Pillow's bundled default font (pinned Pillow==11.1.0) — no system-font
@@ -213,6 +220,8 @@ def perfect_output(
     gt: list[GTToken],
     model_name: str = "synthetic-perfect",
     version: str = SYNTHETIC_VERSION,
+    config_id: str = SYNTHETIC_CONFIG_ID,
+    config_hash: str = SYNTHETIC_CONFIG_HASH,
 ) -> OCROutput:
     """Every GT token read exactly, at its exact box."""
     words = [OCRWord(text=t.token_text, bbox=t.bbox, confidence=0.99) for t in gt]
@@ -221,6 +230,8 @@ def perfect_output(
         raw_response=SYNTHETIC_RAW_RESPONSE,
         model_name=model_name,
         version=version,
+        config_id=config_id,
+        config_hash=config_hash,
     )
 
 
@@ -229,6 +240,8 @@ def misread_output(
     index: int = 0,
     model_name: str = "synthetic-misread",
     version: str = SYNTHETIC_VERSION,
+    config_id: str = SYNTHETIC_CONFIG_ID,
+    config_hash: str = SYNTHETIC_CONFIG_HASH,
 ) -> OCROutput:
     """Perfect read except the token at `index` has one character wrong."""
     words = [
@@ -244,6 +257,8 @@ def misread_output(
         raw_response=SYNTHETIC_RAW_RESPONSE,
         model_name=model_name,
         version=version,
+        config_id=config_id,
+        config_hash=config_hash,
     )
 
 
@@ -252,6 +267,8 @@ def omission_output(
     index: int = 0,
     model_name: str = "synthetic-omission",
     version: str = SYNTHETIC_VERSION,
+    config_id: str = SYNTHETIC_CONFIG_ID,
+    config_hash: str = SYNTHETIC_CONFIG_HASH,
 ) -> OCROutput:
     """Perfect read except the token at `index` is not detected at all."""
     words = [
@@ -264,6 +281,8 @@ def omission_output(
         raw_response=SYNTHETIC_RAW_RESPONSE,
         model_name=model_name,
         version=version,
+        config_id=config_id,
+        config_hash=config_hash,
     )
 
 
@@ -271,6 +290,8 @@ def hallucination_output(
     gt: list[GTToken] | None = None,
     model_name: str = "synthetic-hallucination",
     version: str = SYNTHETIC_VERSION,
+    config_id: str = SYNTHETIC_CONFIG_ID,
+    config_hash: str = SYNTHETIC_CONFIG_HASH,
 ) -> OCROutput:
     """All GT tokens read correctly PLUS one invented box. With gt=[] (a blank
     image) the output is a single hallucinated word — the negative-control case."""
@@ -281,6 +302,8 @@ def hallucination_output(
         raw_response=SYNTHETIC_RAW_RESPONSE,
         model_name=model_name,
         version=version,
+        config_id=config_id,
+        config_hash=config_hash,
     )
 
 
@@ -288,6 +311,8 @@ def box_free_output(
     gt: list[GTToken],
     model_name: str = "synthetic-boxfree",
     version: str = SYNTHETIC_VERSION,
+    config_id: str = SYNTHETIC_CONFIG_ID,
+    config_hash: str = SYNTHETIC_CONFIG_HASH,
 ) -> OCROutput:
     """A VLM-style blob: one text response, no boxes, no confidence."""
     blob = " ".join(t.token_text for t in gt)
@@ -297,5 +322,7 @@ def box_free_output(
         raw_response=SYNTHETIC_RAW_RESPONSE,
         model_name=model_name,
         version=version,
+        config_id=config_id,
+        config_hash=config_hash,
         box_free=True,
     )

@@ -20,6 +20,7 @@ this file:
 from __future__ import annotations
 
 import importlib
+import inspect
 
 import pytest
 
@@ -51,6 +52,16 @@ class EchoRunner(Runner):
 
     model_name = "echo-runner"
     version = "echo-0.0.1"
+    config_id = "echo"
+
+    def config(self) -> dict[str, object]:
+        """A test double still has to declare a config — that is the point of the ABC.
+
+        If `config()` had a default `{}`, a runner could inherit an empty declaration and
+        hash identically to every other config of its engine (D-13.5). Making the double
+        implement it proves the abstract method is actually enforced.
+        """
+        return {"echo_text": "ECHO"}
 
     def run(self, image_ref: ImageRef) -> OCROutput:
         w = min(50.0, float(image_ref.w))
@@ -61,6 +72,8 @@ class EchoRunner(Runner):
             raw_response={"synthetic": True},
             model_name=self.model_name,
             version=self.version,
+            config_id=self.config_id,
+            config_hash=self.config_hash(),
         )
 
 
@@ -153,9 +166,13 @@ def test_runner_version_comes_from_its_library(runner: Runner):
 
     What this still cannot prove: that the version string identifies the *system* that
     produced the results. These engines download model weights separately from the pip
-    package, so identical `__version__` can front different weights, and engine config
-    (thresholds, arch names) is not in the string at all. Closing that needs a run
-    fingerprint over weights + config, not a stricter version check.
+    package, so identical `__version__` can front different weights.
+
+    The config half of that gap is now closed by D-13.5 — `config_hash` fingerprints the
+    declared knobs (thresholds, arch names), which `__version__` never carried. **The
+    weights half is still open**: two runs of the same library version with different
+    downloaded weights remain indistinguishable, and closing it needs a digest over the
+    weight files themselves.
     """
     if runner.version_source is None:
         assert isinstance(runner, _NO_LIBRARY_VERSION), (
@@ -485,3 +502,120 @@ def test_easyocr_is_deterministic(synthetic_image):
         return [(w.text, w.bbox, w.confidence) for w in out.words]
 
     assert fingerprint(first) == fingerprint(second)
+
+
+# --- config identity (D-13.5) --------------------------------------------------
+# `config_hash` only protects the aggregation if `config()` actually DECLARES the knobs
+# that change the output. An incomplete dict is the one remaining way to get a false
+# identity — two different arms hashing the same — so it is tested rather than trusted.
+
+
+@pytest.mark.parametrize("runner", REGISTERED_RUNNERS, ids=lambda r: r.model_name)
+def test_runner_config_covers_its_init_signature(runner: Runner):
+    """Every `__init__` parameter must appear in `config()`.
+
+    Generic, so a future runner gets the guarantee without anyone remembering to write a
+    per-engine test. Its blind spot — a runner whose knobs are module constants rather than
+    constructor arguments — is covered by the explicit-knob test below. All three real
+    runners take no arguments today, so this is nearly vacuous *now*; it exists for the arms
+    Phase 13 is about to add, whose tuned variants take their thresholds as arguments.
+    """
+    params = [
+        name
+        for name in inspect.signature(type(runner).__init__).parameters
+        if name not in ("self", "args", "kwargs")
+    ]
+    declared = set(runner.config())
+    missing = [p for p in params if p not in declared]
+    assert not missing, (
+        f"{type(runner).__name__}.config() omits __init__ parameter(s) {missing}. An "
+        "undeclared knob means two arms that differ by it hash identically and aggregate() "
+        "averages them (D-13.5)."
+    )
+
+
+_EXPECTED_KNOBS = {
+    # bin_thresh/box_thresh added in Phase 13h: they are `None` (= docTR's own default) on
+    # the stock arm and floats on the tuned one, so they must be DECLARED even when unset —
+    # an undeclared knob is how the two arms would hash the same.
+    "doctr": {"det_arch", "reco_arch", "bin_thresh", "box_thresh"},
+    # The three PP-OCR flags are correctness requirements, not tuning (see the runner), but
+    # they are declared so an arm that ever flips one cannot merge with these results. The
+    # four text_det_* knobs are step 6's tuning surface, declared for the same reason.
+    "pp-ocrv6_medium": {
+        "return_word_box", "enable_mkldnn", "det_model", "rec_model",
+        "text_det_thresh", "text_det_box_thresh",
+        "text_det_unclip_ratio", "text_det_limit_side_len",
+    },
+    # Declared separately, not as the single value they are both set from: the effective
+    # floor is max(low_text, text_threshold), so an arm moving only one is a different arm.
+    "easyocr": {"text_threshold", "low_text", "link_threshold"},
+}
+
+
+@pytest.mark.parametrize("runner", REGISTERED_RUNNERS, ids=lambda r: r.model_name)
+def test_runner_declares_its_known_knobs(runner: Runner):
+    """The knobs we KNOW change these engines' output must be in `config()`.
+
+    Catches what the signature check cannot: a no-argument runner whose behaviour is set by
+    module constants. `EchoRunner` is skipped — a test double with no real engine behind it.
+    """
+    expected = _EXPECTED_KNOBS.get(runner.model_name)
+    if expected is None:
+        pytest.skip(f"no known-knob list for {runner.model_name} (test double)")
+    missing = expected - set(runner.config())
+    assert not missing, f"{type(runner).__name__}.config() omits known knob(s) {missing}"
+
+
+@pytest.mark.parametrize("runner", REGISTERED_RUNNERS, ids=lambda r: r.model_name)
+def test_config_hash_is_stable_across_calls(runner: Runner):
+    """Same config -> same digest, every call. A digest that drifted would split one arm."""
+    assert runner.config_hash() == runner.config_hash()
+    assert len(runner.config_hash()) == 12
+
+
+def test_config_hash_changes_when_a_knob_changes():
+    """The property the whole design rests on: move a knob, get a different identity.
+
+    Uses the test double rather than a real engine so nothing is downloaded and no engine is
+    mutated — the hashing lives on the base class, so proving it here proves it for all.
+    """
+
+    class _VariantEcho(EchoRunner):
+        def config(self) -> dict[str, object]:
+            return {"echo_text": "DIFFERENT"}
+
+    assert EchoRunner().config_hash() != _VariantEcho().config_hash()
+
+
+def test_config_hash_ignores_key_order():
+    """Canonical JSON: two dicts differing only in insertion order are ONE identity."""
+
+    class _A(EchoRunner):
+        def config(self) -> dict[str, object]:
+            return {"a": 1, "b": 2}
+
+    class _B(EchoRunner):
+        def config(self) -> dict[str, object]:
+            return {"b": 2, "a": 1}
+
+    assert _A().config_hash() == _B().config_hash()
+
+
+def test_a_runner_cannot_skip_declaring_config():
+    """`config()` is abstract: a runner that declares nothing must not instantiate.
+
+    A default `{}` would have let it hash identically to every other config of its engine —
+    the exact collision D-13.5 exists to stop — and it would have failed silently.
+    """
+
+    class _NoConfigRunner(Runner):
+        model_name = "no-config"
+        version = "0.0.1"
+        config_id = "none"
+
+        def run(self, image_ref: ImageRef) -> OCROutput:  # pragma: no cover - never runs
+            raise AssertionError("unreachable: instantiation must fail first")
+
+    with pytest.raises(TypeError, match="abstract"):
+        _NoConfigRunner()

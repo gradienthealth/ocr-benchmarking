@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from ground_truth.build_gt import BuildError, build, main, make_parser
+from ground_truth.build_gt import BuildError, artifact_paths, build, main, make_parser
 
 # --- the synthetic world ---------------------------------------------------------------
 
@@ -653,3 +653,76 @@ def test_summary_carries_no_token_text_and_no_uid(world):
 def test_summary_is_written_to_a_file_as_well_as_returned(world):
     summary = world.run()
     assert (world.gt_dir / "gt_summary.txt").read_text().strip() == summary.strip()
+
+
+# --- Phase 13h / D-13.4: a second artifact must not clobber the first --------------------
+# The dev slice is built by THIS script with a different `--out`. Until 13h the three
+# sibling names were hardcoded, so building it would have overwritten gt_v1's frozen scope
+# hash and summary — a rule-#8 invalidation performed by a tool rather than by a human.
+
+
+def test_artifact_paths_reproduce_the_historical_gt_names_exactly():
+    """The default build's four filenames are unchanged. gt_v1's artifacts must not churn."""
+    gt_hash, set_hash, summary = artifact_paths(Path("ground_truth/gt.csv"))
+    assert gt_hash.name == "gt.csv.sha256"
+    assert set_hash.name == "gt_set.sha256"
+    assert summary.name == "gt_summary.txt"
+
+
+def test_artifact_paths_are_derived_from_out():
+    gt_hash, set_hash, summary = artifact_paths(Path("ground_truth/dev_v1.csv"))
+    assert gt_hash.name == "dev_v1.csv.sha256"
+    assert set_hash.name == "dev_v1_set.sha256"
+    assert summary.name == "dev_v1_summary.txt"
+
+
+def test_artifact_paths_handles_an_out_without_a_csv_suffix():
+    _, set_hash, summary = artifact_paths(Path("ground_truth/devslice"))
+    assert set_hash.name == "devslice_set.sha256"
+    assert summary.name == "devslice_summary.txt"
+
+
+def test_a_dev_slice_build_does_not_touch_the_scored_sets_artifacts(world):
+    """THE regression this fix exists for: build gt.csv, then build a dev slice beside it.
+
+    Both hash files and both summaries must survive, holding their own values. If the dev
+    build overwrote `gt_set.sha256`, every number reported against gt_v1 would be scored
+    against a scope hash that no longer describes it — and nothing would say so.
+    """
+    world.run()
+    frozen = {
+        p.name: p.read_bytes()
+        for p in (world.gt_dir / "gt.csv.sha256",
+                  world.gt_dir / "gt_set.sha256",
+                  world.gt_dir / "gt_summary.txt")
+    }
+
+    dev_argv = [a for a in world.argv()]
+    dev_argv[dev_argv.index("--out") + 1] = str(world.gt_dir / "dev_v1.csv")
+    dev_argv[dev_argv.index("--text-presence-name") + 1] = "text_presence_dev_v1.csv"
+    build(make_parser().parse_args(dev_argv))
+
+    for name, content in frozen.items():
+        assert (world.gt_dir / name).read_bytes() == content, f"{name} was clobbered"
+    assert (world.gt_dir / "dev_v1_set.sha256").is_file()
+    assert (world.gt_dir / "dev_v1_summary.txt").is_file()
+
+
+def test_dev_slice_summary_names_itself_not_gt_csv(world):
+    """A dev-slice summary that says "gt.csv" would be filed as the scored set's."""
+    dev_argv = [a for a in world.argv()]
+    dev_argv[dev_argv.index("--out") + 1] = str(world.gt_dir / "dev_v1.csv")
+    dev_argv[dev_argv.index("--text-presence-name") + 1] = "text_presence_dev_v1.csv"
+    summary = build(make_parser().parse_args(dev_argv))
+    assert "dev_v1.csv sha256" in summary
+    assert "dev_v1_set.sha256" in summary
+    assert "Phase 10e — gt.csv build summary" not in summary
+
+
+def test_text_presence_name_may_not_collide_with_the_dev_slice_artifacts(world):
+    """The reserved set tracks --out: a dev build reserves ITS names, not gt.csv's."""
+    dev_argv = [a for a in world.argv()]
+    dev_argv[dev_argv.index("--out") + 1] = str(world.gt_dir / "dev_v1.csv")
+    dev_argv[dev_argv.index("--text-presence-name") + 1] = "dev_v1_set.sha256"
+    with pytest.raises(BuildError, match="collides"):
+        build(make_parser().parse_args(dev_argv))

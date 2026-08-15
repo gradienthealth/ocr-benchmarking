@@ -303,12 +303,15 @@ def test_server_binds_loopback_and_bind_is_not_configurable(
 
     # The parser's real option strings: nothing to set a host or a port.
     declared = set(re.findall(r'add_argument\(\s*"(--[\w-]+)"', src))
-    assert declared == {"--set", "--groups", "--summary"}
+    assert declared == {"--set", "--groups", "--summary", "--review-dir"}
     with pytest.raises(SystemExit):
         review_gt.main(["--help"])
     help_text = capsys.readouterr().out
+    # An exact allowlist, not a "no --host" check: adding ANY option must be a deliberate,
+    # reviewed edit here. `--review-dir` (Phase 13h) renames the records directory within
+    # ground_truth/ and cannot reach the socket.
     assert set(re.findall(r"--[a-zA-Z][\w-]*", help_text)) == {
-        "--set", "--groups", "--summary", "--help"}
+        "--set", "--groups", "--summary", "--review-dir", "--help"}
     for banned in ("--host", "--port", "--bind", "--listen"):
         assert banned not in help_text
 

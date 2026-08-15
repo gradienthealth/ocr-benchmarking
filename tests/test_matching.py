@@ -13,6 +13,8 @@ import random
 from harness.contract import GTToken, OCROutput, OCRWord, normalize
 from harness.matching import iou, match
 from tests.synthetic import (
+    SYNTHETIC_CONFIG_HASH,
+    SYNTHETIC_CONFIG_ID,
     SYNTHETIC_RAW_RESPONSE,
     SYNTHETIC_VERSION,
     box_free_output,
@@ -37,6 +39,8 @@ def _boxed_output(words: list[OCRWord], model_name: str = "synthetic-handmade") 
         raw_response=SYNTHETIC_RAW_RESPONSE,
         model_name=model_name,
         version=SYNTHETIC_VERSION,
+        config_id=SYNTHETIC_CONFIG_ID,
+        config_hash=SYNTHETIC_CONFIG_HASH,
     )
 
 
@@ -229,6 +233,8 @@ def test_box_free_normalize_applied():
         raw_response=SYNTHETIC_RAW_RESPONSE,
         model_name="synthetic-boxfree",
         version=SYNTHETIC_VERSION,
+        config_id=SYNTHETIC_CONFIG_ID,
+        config_hash=SYNTHETIC_CONFIG_HASH,
         box_free=True,
     )
     result = match(blob, gt_composed)
@@ -251,6 +257,8 @@ def test_box_free_order_independence():
             raw_response=SYNTHETIC_RAW_RESPONSE,
             model_name="synthetic-boxfree",
             version=SYNTHETIC_VERSION,
+            config_id=SYNTHETIC_CONFIG_ID,
+            config_hash=SYNTHETIC_CONFIG_HASH,
             box_free=True,
         )
 

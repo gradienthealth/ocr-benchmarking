@@ -15,6 +15,8 @@ labeled Diagnostic appendix, and exactly three charts (no latency chart) are pro
 from __future__ import annotations
 
 import inspect
+import pathlib
+import tempfile
 
 import pytest
 
@@ -52,6 +54,9 @@ def _mkrow(**over) -> dict:
         model_name="synth-engine",
         # Non-empty by default: aggregate() rejects a blank version (D-8.4).
         version="0.0.0-synthetic",
+        # Same, for config identity (D-13.5) — the report renders both in its header.
+        config_id="synthetic",
+        config_hash="0000synthetic",
         # Shared across every row by default (D-9.1 mirrors D-8.4): _synthetic_aggregate()
         # below has exactly one row that actually records a verifier_elapsed, but the
         # mixed-pair guard keys on identity, not elapsed, so every row in one batch must
@@ -222,3 +227,170 @@ def test_missing_run_metadata_is_flagged(tmp_path):
     assert "not fully supplied" in md
     # model_name still comes from the aggregate
     assert "synth-engine" in md
+
+
+def test_config_identity_rendered_in_header(tmp_path):
+    """Two arms of one engine must be tellable apart by reading the report (D-13.5).
+
+    Both come from the aggregate rather than `run_metadata`, so — unlike the header scalars
+    — they cannot be forgotten or mistyped at report time: every scored row carries them.
+    """
+    md = write_report(_synthetic_aggregate(), tmp_path / "r.md")
+    assert "| Config " in md
+    assert "synthetic" in md
+    assert "0000synthetic" in md  # the digest, not just the label
+
+
+# --- detector-only view (Phase 13e) --------------------------------------------
+# The third table: did the engine FIND the text, ignoring whether it read it. Two things
+# are pinned here because getting them wrong invents signal — a stratum with no
+# text-bearing images must render `n/a` with a reason rather than a saturated 100%, and a
+# blank control's invented boxes must land in the hallucination floor, never in a rate.
+
+
+def _detector_aggregate() -> dict:
+    """Text-bearing + blank rows across three strata, one of them entirely blank."""
+    rows = [
+        # text-bearing: 3 of 4 tokens found, 1 invented box
+        _mkrow(stratum="us_ge", gt_total=4, found_count=3, omission_count=1, added_count=1,
+               box_free=False, iou_thr=0.5),
+        # a stratum with NO text-bearing images at all (mg_tomo / ct_scout in the real set)
+        _mkrow(stratum="mg_tomo", gt_total=0, negative_control=True,
+               negative_control_floor_count=3, added_count=3, box_free=False, iou_thr=0.5),
+        _mkrow(stratum="mg_tomo", gt_total=0, negative_control=True, box_free=False,
+               iou_thr=0.5),
+        # mixed stratum: one text-bearing image plus one blank control that invented a box
+        _mkrow(stratum="ct_axial", gt_total=2, found_count=2, box_free=False, iou_thr=0.5),
+        _mkrow(stratum="ct_axial", gt_total=0, negative_control=True,
+               negative_control_floor_count=1, added_count=1, box_free=False, iou_thr=0.5),
+    ]
+    return aggregate(rows)
+
+
+@pytest.fixture()
+def detector_md(tmp_path):
+    md = write_report(_detector_aggregate(), tmp_path / "det.md")
+    return md.split("## Detector-only view", 1)[1].split("## Diagnostic appendix", 1)[0]
+
+
+def _table_row(section: str, label: str) -> list[str]:
+    for line in section.splitlines():
+        if line.startswith(f"| {label} "):
+            return [c.strip() for c in line.strip("|").split("|")]
+    raise AssertionError(f"no table row for {label!r}")
+
+
+def test_detector_section_is_its_own_table(detector_md):
+    assert "Boxes only" in detector_md
+    assert "never merged with the end-to-end or reader tables" in detector_md
+    assert "Recall" in detector_md and "Precision" in detector_md
+    # the matcher's bar is stated, so the table can't be read at the wrong threshold
+    assert "IoU ≥ 0.5" in detector_md
+
+
+def test_detection_rates_appear_only_in_the_detector_section(tmp_path):
+    md = write_report(_detector_aggregate(), tmp_path / "det.md")
+    before = md.split("## Detector-only view", 1)[0]
+    assert "Detector-only" not in before
+    # The end-to-end sections above never gain the detector table's columns. Keyed on the
+    # column header itself, not on the bare word "precision" — banning a common word would
+    # fire on unrelated prose edits upstream and read as a false alarm.
+    assert "| Text imgs " not in before
+    assert "detection_recall" not in before
+
+
+def test_zero_text_stratum_renders_na_not_100_percent(detector_md):
+    cells = _table_row(detector_md, "mg_tomo")
+    stratum, images, blank = cells[0], cells[1], cells[2]
+    recall, precision = cells[6], cells[9]
+    assert stratum == "mg_tomo"
+    assert images == "0" and blank == "2"
+    assert recall == "n/a" and precision == "n/a"
+    assert "100.00%" not in "".join(cells)
+
+
+def test_na_cells_carry_their_reason(detector_md):
+    assert "recall `n/a`" in detector_md
+    assert "no boxed text-bearing images" in detector_md
+    assert "no recall denominator" in detector_md
+
+
+def test_blank_control_boxes_are_in_the_floor_and_not_in_any_rate(detector_md):
+    # ct_axial: 1 text image (2/2 found, 0 added) + 1 blank control that invented a box.
+    cells = _table_row(detector_md, "ct_axial")
+    assert cells[1] == "1" and cells[2] == "1"  # 1 text-bearing, 1 blank
+    assert cells[6] == "100.00%"  # recall over the text-bearing image only
+    assert cells[8] == "0"  # Added: the control's box is NOT here
+    assert cells[9] == "100.00%"
+    # overall Added is the one invented box on a text-bearing image, not the 4 on blanks
+    assert _table_row(detector_md, "Overall")[8] == "1"
+
+
+def test_hallucination_floor_is_its_own_line(detector_md):
+    assert "Hallucination floor" in detector_md
+    # "boxed": box-free controls are excluded here, so this floor can differ from the
+    # run-wide negative-control section, which counts every blank frame.
+    assert "3 boxed confirmed-blank image(s) carried 4 box(es)" in detector_md
+    assert "1.333 per image" in detector_md
+    assert "held out of the precision denominator" in detector_md
+
+
+def test_floor_breaks_out_by_stratum_not_just_pooled(detector_md):
+    # Invention rates differ by orders of magnitude across strata (CLAUDE.md §8), so a
+    # single pooled floor hides which stratum invents. Only blank-carrying strata appear.
+    floor_tbl = detector_md.split("Hallucination floor (blank controls)", 1)[1]
+    assert "| Blank images | Boxes | Boxes / image |" in floor_tbl
+    assert _table_row(floor_tbl, "mg_tomo") == ["mg_tomo", "2", "3", "1.500"]
+    assert _table_row(floor_tbl, "ct_axial") == ["ct_axial", "1", "1", "1.000"]
+    # us_ge has no blank control images at all -> no floor row
+    assert "| us_ge " not in floor_tbl
+
+
+def test_detector_table_adds_no_fourth_chart(tmp_path):
+    write_report(_detector_aggregate(), tmp_path / "det.md")
+    pngs = sorted(p.name for p in tmp_path.glob("*.png"))
+    assert pngs == sorted(["det_fr_by_stratum.png", "det_found_vs_added.png",
+                           "det_neg_control.png"])
+
+
+def test_report_still_renders_without_a_detection_key(tmp_path):
+    agg = _detector_aggregate()
+    agg.pop("detection")
+    md = write_report(agg, tmp_path / "old.md")
+    # Fail loud, not silent: the section is still there, saying it could not be built.
+    assert "## Detector-only view" in md
+    assert "Not rendered" in md
+    assert "| Text imgs " not in md
+    assert "## Headline" in md
+
+
+def _one_run(rows) -> dict:
+    return aggregate(rows)
+
+
+def test_floor_reads_na_with_a_reason_when_a_run_has_no_blank_controls():
+    # "0 images carried 0 boxes" reads as a MEASURED floor of zero. A run with no blank
+    # frames has no floor at all — the blind spot CLAUDE.md §8 says hid the ct_scout error.
+    agg = _one_run([_mkrow(stratum="us_ge", gt_total=5, found_count=4, omission_count=1,
+                           added_count=2, box_free=False, iou_thr=0.5)])
+    md = write_report(agg, pathlib.Path(tempfile.mkdtemp()) / "r.md")
+    sec = md.split("## Detector-only view", 1)[1].split("## Diagnostic appendix", 1)[0]
+    assert "Hallucination floor (blank controls): `n/a`" in sec
+    assert "no blank-control frames at all" in sec
+    assert "**not** a floor of zero" in sec
+    assert "carried 0 box(es)" not in sec
+    assert "— — per image" not in sec  # the em-dash hole
+
+
+def test_box_free_run_floor_names_the_reason_instead_of_reporting_zero_controls():
+    rows = [_mkrow(stratum="us_ge", box_free=True, gt_total=5, found_count=4, omission_count=1,
+                   iou_thr=0.5)]
+    rows += [_mkrow(stratum="ct_axial", box_free=True, gt_total=0, negative_control=True,
+                    iou_thr=0.5) for _ in range(3)]
+    agg = _one_run(rows)
+    md = write_report(agg, pathlib.Path(tempfile.mkdtemp()) / "r.md")
+    sec = md.split("## Detector-only view", 1)[1].split("## Diagnostic appendix", 1)[0]
+    assert "all 3 blank-control frame(s) here went through" in sec
+    # the run-wide section still counts them — the divergence is stated, not hidden
+    assert agg["negative_control"]["n_control_images"] == 3
+    assert "including from the floor above" in sec

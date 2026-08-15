@@ -105,12 +105,75 @@ class PaddleV6Runner(Runner):
     model_name = "pp-ocrv6_medium"
     version_source = "paddleocr"  # `version` must equal paddleocr.__version__ (contract test)
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        text_det_thresh: float | None = None,
+        text_det_box_thresh: float | None = None,
+        text_det_unclip_ratio: float | None = None,
+        text_det_limit_side_len: int | None = None,
+    ) -> None:
+        """Stock thresholds by default; Phase 13 step 6's tuned arm passes the four knobs.
+
+        `config_id` is "stock" with no arguments, and "stock" here means **STOCK THRESHOLDS,
+        not "PaddleOCR out of the box"** — the flags in `config()` below are correctness
+        requirements present on BOTH arms. Phase 13 step 6 says to state that explicitly in
+        the report or the finding is mislabelled.
+
+        `text_det_limit_side_len` is the knob step 6 flags as mattering most here: burned-in
+        tokens are small and PP-OCR's default resize can shrink them below what the detector
+        can resolve. Raising it costs compute, so a tuned win may be partly a compute win —
+        the sweep records latency per config for exactly that reason.
+        """
         # Read from the installed library, never hand-typed (base.py's contract + rule #9).
         self.version: str = paddleocr.__version__
         self.det_model: str = DET_MODEL
         self.rec_model: str = REC_MODEL
+        self.text_det_thresh = text_det_thresh
+        self.text_det_box_thresh = text_det_box_thresh
+        self.text_det_unclip_ratio = text_det_unclip_ratio
+        self.text_det_limit_side_len = text_det_limit_side_len
+        # Derived, never passed in — see the docTR runner for why a human label must not be
+        # a constructor argument (it would land in the digest and split one arm in two).
+        self.config_id: str = "stock" if self._is_stock() else "tuned"
         self._ocr: PaddleOCR | None = None
+
+    def _tuned_thresholds(self) -> dict[str, object]:
+        """The four detection knobs that are actually overridden, in PaddleOCR's own names."""
+        return {
+            "text_det_thresh": self.text_det_thresh,
+            "text_det_box_thresh": self.text_det_box_thresh,
+            "text_det_unclip_ratio": self.text_det_unclip_ratio,
+            "text_det_limit_side_len": self.text_det_limit_side_len,
+        }
+
+    def _is_stock(self) -> bool:
+        return all(v is None for v in self._tuned_thresholds().values())
+
+    def config(self) -> dict[str, object]:
+        """Everything passed to `PaddleOCR(...)` that can change a box or a string (D-13.5).
+
+        The model names are declared because a tier swap (medium -> server) is a different
+        engine configuration entirely. The three correctness-required flags are declared even
+        though they are constant today: if a future arm ever flips one, the hash must change
+        rather than quietly merge with these results.
+
+        The four detection thresholds are declared as `None` on the stock arm, meaning
+        "PaddleOCR's own default", rather than as copied literals: `det_model` is in this
+        dict and `version` is in `aggregate()`'s key, so the pair pins the effective default
+        exactly, while a hand-copied number would be what we BELIEVE the engine used and
+        would go stale silently on a paddleocr bump (Phase 13h, same reasoning as docTR's).
+        """
+        return {
+            "det_model": self.det_model,
+            "rec_model": self.rec_model,
+            "return_word_box": True,
+            "enable_mkldnn": False,
+            "use_doc_orientation_classify": False,
+            "use_doc_unwarping": False,
+            "use_textline_orientation": False,
+            **self._tuned_thresholds(),
+        }
 
     @property
     def ocr(self) -> PaddleOCR:
@@ -122,9 +185,14 @@ class PaddleV6Runner(Runner):
         construction and a weight download.
         """
         if self._ocr is None:
+            # Only the knobs actually overridden are passed. PaddleOCR treats an explicit
+            # `None` as "unset" for these, but passing them anyway would make the stock arm's
+            # constructor call differ from the one Phase 9 validated for no reason.
+            tuned = {k: v for k, v in self._tuned_thresholds().items() if v is not None}
             self._ocr = PaddleOCR(
                 text_detection_model_name=DET_MODEL,
                 text_recognition_model_name=REC_MODEL,
+                **tuned,
                 # Word-level boxes. REQUIRED by the contract: without this PP-OCR returns one
                 # box per text LINE, so an overlay line like "ID: CMFN-0042 ACC-0099" becomes a
                 # single ~236px box that scores IoU ~0.43 against the ~102px GT box for one
@@ -193,5 +261,7 @@ class PaddleV6Runner(Runner):
             raw_response=results,
             model_name=self.model_name,
             version=self.version,
+            config_id=self.config_id,
+            config_hash=self.config_hash(),
             box_free=False,  # PP-OCR gives per-word boxes
         )

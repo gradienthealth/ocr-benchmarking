@@ -26,8 +26,7 @@ from __future__ import annotations
 
 import jiwer
 
-from harness.contract import GTToken, normalize
-from harness.matching import MatchResult
+from harness.contract import GTToken, MatchResult, normalize
 
 KEEP = "KEEP"
 PHI = "PHI"
@@ -85,7 +84,8 @@ def score(
           (zero GT tokens) EVERY prediction is a pure hallucination; this is the
           hallucination-floor signal Phase 6 aggregates over the control set.
       box_free / iou_thr  — run metadata carried through (box-free is ranked separately;
-          iou_thr belongs in run metadata, D-4.2).
+          iou_thr belongs in run metadata, D-4.2). `iou_thr` is None when no matcher ran
+          at all — the reading arm, which is handed the GT box (Phase 13b).
       elapsed / cost  — carried through UNAGGREGATED (percentiles happen at Phase 6).
       modality / stratum / vendor  — carried through for Phase 6 stratified breakout;
           None on a blank control (no GT token to read them from).

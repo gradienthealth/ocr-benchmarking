@@ -13,12 +13,21 @@ separate `gt_schema.py` inside `ground_truth/`. `matching.py` and `metrics.py` n
 the GT shape, and routing it through this PHI-free module lets them import it without
 taking a dependency on the PHI-touching `ground_truth/` package.
 
-This file touches ZERO PHI: it is pure dataclasses plus a string normalizer. It has
-no engine-specific imports and depends only on the standard library.
+`Match`/`MatchResult` live here for exactly the same reason (moved from `matching.py`
+in Phase 13b). They are the shape of "what happened to each GT token on one image",
+and there are now TWO producers of that shape: `matching.py`, which derives it by IoU
+from an engine's own boxes, and `reading.py`, which is handed the boxes and so has no
+matcher at all. `metrics.py` consumes it. Keeping the shape here lets the reading arm
+reuse the ONE frozen scoring path without importing the matcher it does not use.
+
+This file touches ZERO PHI: it is pure dataclasses plus a string normalizer and a
+config digest. It has no engine-specific imports and depends only on the standard library.
 """
 
 from __future__ import annotations
 
+import hashlib
+import json
 import unicodedata
 from dataclasses import dataclass
 
@@ -71,18 +80,40 @@ class OCROutput:
     # `aggregate()` refuses to blend rows whose `(model_name, version)` differ, so a
     # version bump can never merge with prior results (D-8.3).
 
+    config_id: str
+    # SHORT HUMAN LABEL for this arm's configuration — "stock", "tuned", "parseq",
+    # "thr0.2". Exists for the report: `config_hash` below is what actually protects the
+    # aggregation, but a bare hash is unreadable in a findings table (D-13.5).
+    # REQUIRED and validated non-empty for the same reason as `version`.
+
+    config_hash: str
+    # AUTO-COMPUTED digest of every knob that changes what the engine outputs, produced by
+    # `Runner.config_hash()` from the runner's declared `config()` dict — never hand-typed
+    # and never assembled here (D-13.5).
+    #
+    # Why this exists in addition to `config_id`: `aggregate()`'s guard keyed only on
+    # `(model_name, version, verifier_*)`, so docTR-stock, docTR-tuned and docTR+parseq all
+    # presented the SAME identity — same library, same `__version__` — and averaged into one
+    # meaningless row. A human label alone fails open: it prevents that collision only if
+    # someone remembers to change the label when they change a knob, and forgetting is
+    # silent. A hash over the declared config cannot be forgotten — change a threshold and
+    # the identity changes with it.
+    #
+    # REQUIRED and validated non-empty (see `__post_init__`): a blank default would let a
+    # runner that declares nothing sail through, which is precisely the bug.
+
     box_free: bool = False
     # True for the VLM "blob" path (a single text response, no per-word boxes). Set by
     # the runner. Box-free outputs keep the primary engine's box and swap only the string.
 
     def __post_init__(self) -> None:
-        """Reject a blank version at construction — the earliest point it can be caught.
+        """Reject a blank version or config identity at construction — the earliest point.
 
-        Making the field required stops an OMITTED version (TypeError from the dataclass
+        Making the fields required stops an OMITTED value (TypeError from the dataclass
         constructor); this stops an EXPLICITLY BLANK one. Both matter, and neither is a
         runner-only concern: a hand-built `OCROutput` in a script or notebook is exactly
-        how un-versioned rows would otherwise reach `aggregate()`. Fixtures must pass an
-        explicit marker (e.g. `"0.0.0-synthetic"`), not "".
+        how un-versioned or un-configured rows would otherwise reach `aggregate()`.
+        Fixtures must pass explicit markers (e.g. `"0.0.0-synthetic"`), not "".
         """
         if not self.version.strip():
             raise ValueError(
@@ -90,6 +121,21 @@ class OCROutput:
                 "(rule #9) — source it from the engine itself (e.g. the library's "
                 "__version__), never hand-type it. Synthetic fixtures should pass an "
                 "explicit marker such as '0.0.0-synthetic'."
+            )
+        if not self.config_id.strip():
+            raise ValueError(
+                "OCROutput.config_id must be a non-empty label for this arm's config "
+                "(e.g. 'stock', 'tuned', 'parseq') — it is how a reader tells two arms of "
+                "the same engine apart in the report (D-13.5). Synthetic fixtures should "
+                "pass an explicit marker such as 'synthetic'."
+            )
+        if not self.config_hash.strip():
+            raise ValueError(
+                "OCROutput.config_hash must be a non-empty digest of the runner's declared "
+                "config — produce it with Runner.config_hash(), never hand-type it "
+                "(D-13.5). Without it, two arms of the same engine at the same version "
+                "carry identical identities and aggregate() averages them silently. "
+                "Synthetic fixtures should pass an explicit marker such as '0000synthetic'."
             )
 
 
@@ -118,6 +164,40 @@ class GTToken:
     label: str  # "PHI" | "KEEP"
 
 
+@dataclass
+class Match:
+    """One GT token paired with one prediction."""
+
+    gt: GTToken
+    word: OCRWord
+    # The raw prediction exactly as the engine emitted it — un-normalized. On the
+    # box-free path this is the whole blob word, since no per-token prediction exists.
+    # On the reading path it is the reader's returned string at the GT box.
+
+    iou: float | None
+    # None when the pairing carries no location evidence: the box-free path (a substring
+    # match), and the reading path (the box was GIVEN, so there is nothing to overlap).
+
+
+@dataclass
+class MatchResult:
+    """What the engine did with each GT token on one image."""
+
+    matches: list[Match]
+    omissions: list[GTToken]  # GT tokens no prediction covered
+    hallucinations: list[OCRWord]  # predictions covering no GT token (the dangerous axis)
+    box_free: bool
+    # True → pairing came from the substring path: lower-confidence, no location,
+    # ranked separately from boxed matches — never mixed into the same ranking.
+
+    iou_thr: float | None
+    # Threshold this result was computed with; belongs in run metadata (D-4.2).
+    # None means NO MATCHER RAN — the reading arm (Phase 13b) is handed the GT box, so
+    # there is no threshold and no detection decision to record. It is not a default:
+    # `matching.py` always sets a real value, and a None here is a positive statement
+    # that detection metrics are undefined for the row, not that someone forgot.
+
+
 def normalize(s: str) -> str:
     """Canonicalize a string for exact matching. FROZEN.
 
@@ -137,3 +217,20 @@ def normalize(s: str) -> str:
     every score. It is frozen — treat any edit the way you would an edit to `gt.csv`.
     """
     return unicodedata.normalize("NFC", s).strip()
+
+
+def config_digest(config: dict[str, object]) -> str:
+    """Stable 12-hex-char digest of a declared config dict — THE one algorithm (D-13.5).
+
+    Lives here, next to the `config_hash` field it fills, because there are now two kinds
+    of arm that need an identity: a `Runner` (end-to-end engine) and a `Reader` (crop in,
+    string out). If each computed its own digest, two arms could hash differently for the
+    same config and `aggregate()`'s identity guard would compare incomparable values — the
+    collision D-13.5 exists to stop, reintroduced one level up. `Runner.config_hash()` and
+    `Reader.config_hash()` both delegate here and neither may override.
+
+    Canonical JSON (`sort_keys=True`) so key order never changes the digest; `default=str`
+    so a non-JSON knob (an enum, a Path) degrades to its string form instead of raising.
+    """
+    canonical = json.dumps(config, sort_keys=True, default=str)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:12]

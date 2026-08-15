@@ -130,6 +130,15 @@ next-steps.md
 insights.md
 diff-update.md
 
+# Presentation drafts and scratch tables. slides.md and promptslides.txt contain
+# GRDN-prefixed ID-shaped strings and date-like strings that have not been cleared
+# as non-PHI; census_out/tag_census.md is a DICOM tag census over the real study
+# set. None of these belong in a public repo.
+slides.md
+promptslides.txt
+table.csv
+census_out/
+
 # Internal detail Gradient wouldn't want public: these name the live PHI GCS
 # bucket, the vendor/BAA legal matrix, the enforcement-layer inventory, and
 # internal ops paths.
@@ -137,3 +146,11 @@ CLAUDE.md
 transfer.sh
 build_manifest.py
 scripts/
+
+# Git worktrees created by EnterWorktree (local scratch checkouts, never committed)
+.claude/worktrees/
+# Manually-created worktrees for parallel phase sessions. Nested INSIDE the project dir on
+# purpose: the managed PHI guard and every managed deny glob are absolute-path scoped to
+# /home/user/intern_ocr_transfer (phi_guard.py PROJECT_DIR), so a sibling ../repo-<phase>
+# worktree would run with the root-owned rails silently disabled. Nesting keeps them armed.
+.worktrees/

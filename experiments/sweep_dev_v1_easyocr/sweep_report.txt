@@ -1,0 +1,42 @@
+=== Phase 13h — stock vs tuned, dev-slice sweep (PHI-free) ===
+
+dev set            dev_v1.csv  sha256 1733f78acc03318d2c832fda2b07ee19d47accb916e49b707e7bf7364dfea7df
+images             22
+ranked on          false_redaction_rate (lower is better)
+stratum guard      a config is disqualified if any stratum regresses > 0.02
+
+D-13.4: tuned on a dev slice drawn from OUTSIDE gt_v1, so these thresholds were
+chosen without seeing the scored set. The winners below are FROZEN — re-tuning
+after seeing gt_v1 numbers reintroduces the bias the slice was annotated to avoid.
+
+-- easyocr 1.7.2 -------------------------------------------------
+configurations tried: 2
+
+  config_id  hash            false_red  keep_exact   added  omitted   med_ms
+  stock      f24d5b06a787       0.7132      0.2868     138      293    12966
+             {"low_text": 0.4, "text_threshold": 0.7}
+  thr0.2     741280cbf20c       0.9365      0.0635     280      427    10261
+             {"low_text": 0.2, "text_threshold": 0.2}
+
+  DISQUALIFIED on the per-stratum guard (pooled numbers looked fine):
+    {"low_text": 0.2, "text_threshold": 0.2}
+      worst: us_siemens 0.6000 -> 0.9333 (delta -0.3333)
+
+  WINNER: none — every candidate regressed a stratum. The stock arm stands;
+  do NOT freeze a tuned config for this engine on this evidence.
+
+-- per-stratum, winner vs stock ------------------------------------------
+(the pooled number above can improve while a stratum is destroyed — CLAUDE.md §8)
+  easyocr:   (no winner — stock arm only)
+    stratum                       stock      tuned      delta
+    ct_scout                        n/a        n/a        n/a
+    ct_secondary_capture         0.7963        n/a        n/a
+    mg_2d                        0.8000        n/a        n/a
+    mg_tomo                         n/a        n/a        n/a
+    us_ge                        0.6822        n/a        n/a
+    us_philips                   0.7091        n/a        n/a
+    us_samsung                   0.7407        n/a        n/a
+    us_siemens                   0.6000        n/a        n/a
+    us_sonosite                  0.6667        n/a        n/a
+    us_toshiba_canon             0.7403        n/a        n/a
+

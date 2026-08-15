@@ -22,6 +22,11 @@ Two CLAUDE.md invariants are carried structurally:
   quality — a conflict the report flags rather than silently resolving. CER/WER are confined
   to a clearly-labeled Diagnostic appendix and are never a ranking signal.
 
+- **Three questions, three tables, never merged.** The end-to-end tables answer "did the
+  pipeline keep the token"; the detector-only table (Phase 13e) answers "did the engine
+  *find* the text at all, ignoring the string." They are rendered as separate sections with
+  separate denominators so a detection loss is never mistaken for a reading loss.
+
 Engine-agnostic: it reports whatever strata/metrics the aggregate holds; there is no
 engine-specific branch here.
 """
@@ -46,9 +51,16 @@ _NA = "—"
 # --- scalar formatters ---------------------------------------------------------
 
 
-def _fmt_rate(x: Optional[float]) -> str:
-    """A rate in [0, 1] as a percentage, or an em-dash when None (no data / 0 denom)."""
-    return _NA if x is None else f"{x * 100:.2f}%"
+def _fmt_rate(x: Optional[float], na: str = _NA) -> str:
+    """A rate in [0, 1] as a percentage, or `na` when None (no data / 0 denominator).
+
+    `na` exists for the detector table, which spells the empty case `n/a` rather than an
+    em-dash: there, a missing rate means "this group had no denominator" and must read as
+    an explicit non-result, never as a dash a skimmer can mistake for a small number — and
+    emphatically never as a defaulted 100% (CLAUDE.md §8). One formatter, so the percent
+    formatting cannot drift between the detector table and every other table.
+    """
+    return na if x is None else f"{x * 100:.2f}%"
 
 
 def _fmt_int(x: Optional[int]) -> str:
@@ -189,6 +201,11 @@ def _header_block(agg: dict, run_metadata: Optional[dict]) -> str:
             ["Field", "Value"],
             [
                 ["Engine (model_name)", model_name],
+                # Config identity (D-13.5) comes from `agg`, not `run_metadata`: it is
+                # carried on every scored row by the runner itself, so unlike the header
+                # scalars below it cannot be forgotten or mistyped at report time.
+                ["Config", agg.get("config_id") or _UNSPEC],
+                ["Config hash", agg.get("config_hash") or _UNSPEC],
                 ["Tier", vals["tier"] or _UNSPEC],
                 ["Exact version", vals["version"] or _UNSPEC],
                 ["Run hash", vals["run_hash"] or _UNSPEC],
@@ -328,6 +345,126 @@ def _negative_control_block(nc: dict) -> str:
     ])
 
 
+def _detector_block(det: dict) -> str:
+    """Detector-only table — boxes vs GT at the matcher's IoU bar, strings ignored."""
+    per_stratum = det["per_stratum"]
+    overall = det["overall"]
+    iou = det.get("iou_thr")
+    thr = (
+        f"IoU ≥ {iou}" if iou is not None
+        else "an UNRECORDED or MIXED IoU threshold (see run metadata)"
+    )
+
+    def row(label: str, g: dict) -> list[str]:
+        return [
+            label,
+            _fmt_int(g["n_text_images"]),
+            _fmt_int(g["n_control_images"]),
+            _fmt_int(g["gt_total"]),
+            _fmt_int(g["found_count"]),
+            _fmt_int(g["omission_count"]),
+            _fmt_rate(g["detection_recall"], "n/a"),
+            _fmt_int(g["predicted_count"]),
+            _fmt_int(g["added_count"]),
+            _fmt_rate(g["detection_precision"], "n/a"),
+        ]
+
+    labeled = [(s, per_stratum[s]) for s in _sorted_strata(per_stratum)]
+    labeled.append(("Overall", overall))
+    # "Text imgs", not "Images": the per-stratum breakout above already has an "Images"
+    # column counting EVERY image, and two denominators under one header is how a detection
+    # number gets read against an end-to-end one.
+    headers = ["Stratum", "Text imgs", "Blank", "GT tokens", "Found", "Missed", "Recall",
+               "Boxes", "Added", "Precision"]
+
+    notes = []
+    for label, g in labeled:
+        if g["detection_recall"] is None:
+            notes.append(f"- **{label}** — recall `n/a`: {g['recall_na_reason']}.")
+        if g["detection_precision"] is None:
+            notes.append(f"- **{label}** — precision `n/a`: {g['precision_na_reason']}.")
+
+    lines = [
+        "## Detector-only view",
+        "",
+        "Boxes only — **strings are never compared here**. A third, separate question: did the "
+        f"engine *find* the text, regardless of whether it *read* it. Matched at {thr} by the "
+        "same matcher as every other table, so a loss here is a detection loss, not a reading "
+        "one. Reported on its own and never merged with the end-to-end or reader tables.",
+        "",
+        "*Text imgs* counts text-bearing images only — recall is denominated in their GT tokens, "
+        "precision in the boxes predicted on them. *Blank* counts the zero-token control frames, "
+        "which are held out of both rates and appear only in the floor line below.",
+        "",
+        _md_table(headers, [row(label, g) for label, g in labeled]),
+    ]
+    if notes:
+        lines += [
+            "",
+            "Where a rate reads `n/a` the denominator is genuinely zero — **not** a 100% score:",
+            "",
+            *notes,
+        ]
+    # The floor gets the same n/a-with-reason treatment as the rates. Printing "0 images
+    # carried 0 boxes" for a run with no controls reads as a MEASURED floor of zero — the
+    # "no invention floor" blind spot CLAUDE.md §8 says hid the ct_scout error.
+    n_ctrl = overall["n_control_images"]
+    if n_ctrl:
+        floor_line = (
+            "**Hallucination floor (blank controls).** "
+            f"{_fmt_int(n_ctrl)} boxed confirmed-blank image(s) carried "
+            f"{_fmt_int(overall['floor_boxes'])} box(es) — "
+            f"{_fmt_float(overall['floor_boxes_per_image'], 3)} per image. Detection precision "
+            "on those frames is 0 by construction (every box there is a false positive), which "
+            "is exactly why they are held out of the precision denominator above rather than "
+            "averaged into it."
+        )
+    else:
+        why = (
+            f"all {overall['n_excluded_controls']} blank-control frame(s) here went through "
+            "no IoU matcher (box-free, or the reading arm's given boxes) and structurally "
+            "cannot report invented boxes"
+            if overall["n_excluded_controls"]
+            else "this run scored no blank-control frames at all"
+        )
+        floor_line = (
+            "**Hallucination floor (blank controls): `n/a`** — "
+            f"{why}, so no invention floor was measured. This is **not** a floor of zero: a "
+            "run with no blank frames has nothing to bound its detection precision against, "
+            "and reading the absence as \"invented nothing\" is exactly the blind spot that "
+            "hid the ct_scout error (CLAUDE.md §8). The run-wide *Negative-control* section "
+            "above counts every blank frame, box-free ones included."
+        )
+    lines += ["", floor_line]
+    # Per-stratum floor, not just the pooled number: invention rates differ by two orders of
+    # magnitude across strata, so one pooled floor hides which stratum is doing the inventing.
+    floor_rows = [
+        [s, _fmt_int(g["n_control_images"]), _fmt_int(g["floor_boxes"]),
+         _fmt_float(g["floor_boxes_per_image"], 3)]
+        for s, g in labeled[:-1] if g["n_control_images"]
+    ]
+    if floor_rows:
+        lines += [
+            "",
+            _md_table(["Stratum", "Blank images", "Boxes", "Boxes / image"], floor_rows),
+        ]
+    n_bf = overall["n_box_free_excluded"]
+    n_ra = overall["n_reading_arm_excluded"]
+    if n_bf or n_ra:
+        lines += [
+            "",
+            f"> ⚠️ {n_bf + n_ra} row(s) excluded from this table, **including from the floor "
+            f"above** — {n_bf} box-free, {n_ra} reading-arm. The box-free path reports no "
+            "hallucinations at all (no per-word structure to locate one with), and the reading "
+            "arm is *handed the GT box* and runs no matcher, so every token is found by "
+            "construction. Counting either would print a better detector than was measured — "
+            "flawless precision, or a saturated 100% recall — and would dilute the floor "
+            "toward zero. This is why the floor here can be smaller than the run-wide "
+            "*Negative-control hallucination floor* section, which counts every blank frame.",
+        ]
+    return "\n".join(lines)
+
+
 def _diagnostic_block(overall: dict, per_stratum: dict) -> str:
     """CER/WER appendix — clearly labeled DIAGNOSTIC ONLY; never a ranking signal."""
     d = overall.get("diagnostic", {})
@@ -387,15 +524,32 @@ def write_report(aggregate: dict, out_path, *, run_metadata: Optional[dict] = No
     _chart_found_vs_added(per_stratum, out_dir / fa_name)
     _chart_negative_control(nc, out_dir / ncc_name)
 
-    md = "\n\n".join([
+    blocks = [
         _header_block(aggregate, run_metadata),
         _headline_block(overall),
         _found_vs_added_block(overall, per_stratum),
         _per_stratum_block(overall, per_stratum),
         _latency_cost_block(overall),
         _negative_control_block(nc),
-        _diagnostic_block(overall, per_stratum),
-    ])
+    ]
+    # Detector-only view: present on any aggregate built by `aggregate()`. Optional so a
+    # hand-assembled aggregate from before Phase 13e still renders rather than crashing —
+    # it is a second view, not a prerequisite of the report.
+    detection = aggregate.get("detection")
+    if detection:
+        blocks.append(_detector_block(detection))
+    else:
+        # Say so rather than omitting silently: a missing section reads as "the engine had
+        # no detection losses", which is the opposite of "nobody measured them."
+        blocks.append(
+            "## Detector-only view\n\n"
+            "> ⚠️ **Not rendered** — this aggregate carries no `detection` key, so the "
+            "detector-only table could not be built. Rebuild it with "
+            "`harness.aggregate.aggregate()`; do not read the absence as a clean detection "
+            "result."
+        )
+    blocks.append(_diagnostic_block(overall, per_stratum))
+    md = "\n\n".join(blocks)
     # Wire chart filenames in last so the block helpers stay free of path detail.
     md = (
         md.replace("FR_BY_STRATUM_CHART", fr_name)

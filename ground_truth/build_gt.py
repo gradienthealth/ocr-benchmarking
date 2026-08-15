@@ -22,6 +22,13 @@ WHAT THIS WRITES
   ground_truth/text_presence_v2.csv    PHI-FREE, COMMITTED. image_id,has_text.
   ground_truth/gt_summary.txt          PHI-FREE. The summary, also printed.
 
+All four sibling names are DERIVED FROM `--out` (see `artifact_paths`), not hardcoded, so a
+second artifact cannot overwrite the first one's hashes. Until Phase 13h they were fixed
+strings: `--out ground_truth/dev_v1.csv` wrote `dev_v1.csv` and `dev_v1.csv.sha256` but then
+clobbered `gt_set.sha256` and `gt_summary.txt` — destroying the frozen scope hash of the set
+every reported number is measured against (CLAUDE.md rule #8), from a script rather than by
+hand. `--out gt.csv` still produces exactly the four names above, byte for byte.
+
 WHY TWO HASHES
 ---------------------------------------------------------------------------------
 A confirmed-blank image contributes ZERO rows, so it is ABSENT from `gt.csv` rather than
@@ -443,21 +450,23 @@ def build_summary(ctx: dict) -> str:
     out: list[str] = []
     add = out.append
 
+    name = ctx["gt_name"]
     if ctx["invalidated"]:
         add("!" * 78)
-        add("!! HASH CHANGED — EVERY NUMBER PREVIOUSLY REPORTED AGAINST THIS gt.csv IS VOID")
+        add(f"!! HASH CHANGED — EVERY NUMBER PREVIOUSLY REPORTED AGAINST THIS {name} IS VOID")
         for which, old, new in ctx["invalidated"]:
             add(f"!!   {which}: {old}")
             add(f"!!   {' ' * len(which)}  -> {new}")
-        add("!! Results across two gt.csv builds are not comparable (CLAUDE.md rule #8).")
+        add(f"!! Results across two {name} builds are not comparable (CLAUDE.md rule #8).")
         add("!! Re-run every engine; do not mix the old numbers with the new ones.")
         add("!" * 78)
         add("")
 
-    add("=== Phase 10e — gt.csv build summary (PHI-free) ===")
+    add(f"=== {ctx['build_label']} build summary (PHI-free) ===")
     add("")
-    add(f"gt.csv sha256      {ctx['gt_hash']}")
-    add(f"gt_set.sha256      {ctx['set_hash']}")
+    # ljust(18) + a space reproduces the historical "gt.csv sha256      " padding exactly.
+    add(f"{(name + ' sha256').ljust(18)} {ctx['gt_hash']}")
+    add(f"{ctx['set_hash_name'].ljust(18)} {ctx['set_hash']}")
     add("                   (scope, not contents — a blank image changes this one only)")
     # Named, because it is the recall denominator for THIS scope and it is a committed file
     # that a build overwrites in place. A summary that does not name it gives no way to tell
@@ -553,6 +562,28 @@ def build_summary(ctx: dict) -> str:
 # --- main -----------------------------------------------------------------------------
 
 
+def artifact_paths(out: Path) -> tuple[Path, Path, Path]:
+    """The three siblings a build writes beside `--out`: content hash, scope hash, summary.
+
+    Named after `--out` rather than hardcoded (Phase 13h / D-13.4), because the tuning dev
+    slice is a SECOND artifact built by this same script. With fixed names, building it would
+    overwrite `gt_v1`'s `gt_set.sha256` and `gt_summary.txt` — a rule-#8 invalidation of the
+    frozen scored set, performed silently by a tool rather than by a human editing a file.
+
+    The rule is `<stem>.csv` -> `<stem>.csv.sha256`, `<stem>_set.sha256`, `<stem>_summary.txt`,
+    which reproduces the existing names EXACTLY for `gt.csv` (`gt_set.sha256`,
+    `gt_summary.txt`). That is deliberate: the committed gt_v1 artifacts must not churn, so
+    this is a generalization of the current behavior, not a change to it. A `--out` without a
+    `.csv` suffix uses the whole filename as the stem.
+    """
+    stem = out.name[: -len(".csv")] if out.name.endswith(".csv") else out.name
+    return (
+        Path(str(out) + ".sha256"),
+        out.parent / f"{stem}_set.sha256",
+        out.parent / f"{stem}_summary.txt",
+    )
+
+
 def _check_presence_name(name: str, out: Path) -> None:
     """`--text-presence-name` must be a bare filename that clobbers none of the artifacts.
 
@@ -561,8 +592,11 @@ def _check_presence_name(name: str, out: Path) -> None:
     message main() withholds); and `gt.csv`/`gt.csv.sha256`/`gt_set.sha256`/`gt_summary.txt`
     would each be overwritten AFTER being written, leaving a committed hash that no longer
     matches the file it names.
+
+    The reserved set is computed from `artifact_paths`, so it tracks `--out`: a dev-slice
+    build reserves `dev_v1_set.sha256`, not `gt_set.sha256`.
     """
-    reserved = {out.name, out.name + ".sha256", "gt_set.sha256", "gt_summary.txt"}
+    reserved = {out.name} | {p.name for p in artifact_paths(out)}
     if not name or Path(name).name != name:
         raise BuildError(
             f"--text-presence-name must be a non-empty bare filename, got {name!r} — it is "
@@ -607,8 +641,7 @@ def build(args: argparse.Namespace) -> str:
 
     # Read the previous hashes BEFORE writing, so a change can be reported as an
     # invalidation instead of quietly replacing the file everything was scored against.
-    gt_hash_path = Path(str(out) + ".sha256")
-    set_hash_path = sibling / "gt_set.sha256"
+    gt_hash_path, set_hash_path, summary_path = artifact_paths(out)
     prev_gt = gt_hash_path.read_text().strip() if gt_hash_path.is_file() else None
     prev_set = set_hash_path.read_text().strip() if set_hash_path.is_file() else None
 
@@ -622,11 +655,13 @@ def build(args: argparse.Namespace) -> str:
     write_csv(presence_path, ("image_id", "has_text"),
               [[i, "1" if has_text[i] else "0"] for i in scored])
 
+    # Labels are the real filenames, padded to a fixed width — for `gt.csv` these are
+    # "gt.csv.sha256   " and "gt_set.sha256   " exactly as before.
     invalidated = []
     if prev_gt is not None and prev_gt != gt_hash:
-        invalidated.append(("gt.csv.sha256   ", prev_gt, gt_hash))
+        invalidated.append((gt_hash_path.name.ljust(16), prev_gt, gt_hash))
     if prev_set is not None and prev_set != set_hash:
-        invalidated.append(("gt_set.sha256   ", prev_set, set_hash))
+        invalidated.append((set_hash_path.name.ljust(16), prev_set, set_hash))
 
     # --- aggregate, all counted from what was actually loaded ---------------------
     by_stratum: dict[str, dict[str, int]] = {}
@@ -651,6 +686,12 @@ def build(args: argparse.Namespace) -> str:
 
     summary = build_summary({
         "invalidated": invalidated,
+        # The artifact this build wrote, so a dev-slice summary cannot be mistaken for the
+        # scored set's. "Phase 10e — gt.csv" is preserved verbatim for the default build:
+        # ground_truth/gt_summary.txt is committed and must not churn on an unrelated change.
+        "build_label": "Phase 10e — gt.csv" if out.name == "gt.csv" else out.name,
+        "gt_name": out.name,
+        "set_hash_name": set_hash_path.name,
         "gt_hash": gt_hash,
         "set_hash": set_hash,
         "presence_name": args.text_presence_name,
@@ -679,7 +720,7 @@ def build(args: argparse.Namespace) -> str:
         "review_stats": _review_stats_block(images, args.review_dir),
         "agreement": self_agreement(records, args.round2_dir),
     })
-    (sibling / "gt_summary.txt").write_text(summary + "\n", encoding="utf-8")
+    summary_path.write_text(summary + "\n", encoding="utf-8")
     return summary
 
 
